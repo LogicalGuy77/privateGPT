@@ -1,0 +1,58 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# PyQt
+*.qmlc
+*.jsc
+.qt/
+
+# Application data
+data/faiss_index/*
+!data/faiss_index/.gitkeep
+data/crash_recovery/*
+!data/crash_recovery/.gitkeep
+data/sessions.db
+data/sessions.db-wal
+data/sessions.db-shm
+
+# Downloaded models
+models/*
+!models/.gitkeep
+*.gguf
+*.safetensors
+*.bin
+
+# Logs
+*.log
+crash.log
+debug.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Memory profiling
+*.dat
+*.prof
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/

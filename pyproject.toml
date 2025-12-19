@@ -1,0 +1,37 @@
+[project]
+name = "private-gpt-app"
+version = "0.1.0"
+description = "A local, privacy-focused desktop chat application with RAG capabilities powered by NVIDIA Nemotron"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PyQt6>=6.6.0",
+    "qasync>=0.24.0",
+    "llama-cpp-python>=0.2.0",
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "huggingface-hub>=0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "watchdog>=3.0.0",  # For QSS hot-reload
+    "memory-profiler>=0.61.0",  # For VRAM profiling
+    "pytest>=7.4.0",
+    "pytest-qt>=4.2.0",
+]
+
+[project.scripts]
+private-gpt = "private_gpt_app.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "watchdog>=3.0.0",
+    "memory-profiler>=0.61.0",
+    "pytest>=7.4.0",
+    "pytest-qt>=4.2.0",
+]
