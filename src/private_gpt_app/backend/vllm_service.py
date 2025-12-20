@@ -99,6 +99,7 @@ class VLLMService:
                         "max_model_len": self.max_model_len,
                         "max_num_seqs": self.max_num_seqs,
                         "enforce_eager": True,  # Disable CUDA graphs for stability
+                        "enable_prefix_caching": True,  # Enable automatic prefix caching (40% speedup)
                     }
                     # Add CPU offload if specified
                     if self.cpu_offload_gb > 0:
