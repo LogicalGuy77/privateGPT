@@ -8,7 +8,7 @@ A local, privacy-focused desktop chat application powered by Qwen2.5-3B-Instruct
 - 💬 **Chat Interface** - Modern PyQt6-based UI with real-time token streaming
 - 🚀 **Powered by vLLM** - AWQ Marlin quantization for maximum efficiency
 - 🎯 **Low VRAM Optimized** - Runs on 4GB+ VRAM GPUs
-- 📜 **2K Context Window** - Balanced performance for low-end hardware
+- 📜 **2K-6k Context Window** - Balanced performance for low-end hardware
 - ⚡ **Fast Generation** - 66-378 tokens/sec on RTX 5060 Laptop
 - 🤖 **Apache 2.0 Licensed Model** - Commercial use ready
 
