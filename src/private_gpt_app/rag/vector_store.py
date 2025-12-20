@@ -12,9 +12,15 @@ class VectorStore:
         self.db_path = os.path.join(os.getcwd(), "data", "qdrant_db")
         os.makedirs(self.db_path, exist_ok=True)
         
-        print(f"Initializing Qdrant at {self.db_path}...")
-        self.client = QdrantClient(path=self.db_path)
-        self._ensure_collection()
+        # Lazy initialization - don't create client until first use
+        self.client = None
+    
+    def _ensure_client(self):
+        """Lazy initialization of Qdrant client."""
+        if self.client is None:
+            print(f"Initializing Qdrant at {self.db_path}...")
+            self.client = QdrantClient(path=self.db_path)
+            self._ensure_collection()
 
     def _ensure_collection(self):
         collections = self.client.get_collections().collections
@@ -34,7 +40,8 @@ class VectorStore:
         """Add documents to the vector store."""
         if not texts:
             return
-            
+        
+        self._ensure_client()  # Lazy init
         embeddings = embedding_service.embed_documents(texts)
         
         points = [
@@ -54,6 +61,7 @@ class VectorStore:
 
     def search(self, query: str, limit: int = 5, filter_metadata: Optional[Dict] = None) -> List[Dict]:
         """Search for relevant documents."""
+        self._ensure_client()  # Lazy init
         query_vector = embedding_service.embed_query(query)
         
         query_filter = None
@@ -87,12 +95,14 @@ class VectorStore:
     
     def clear(self):
         """Clear all documents from the collection."""
+        self._ensure_client()  # Lazy init
         self.client.delete_collection(self.collection_name)
         self._ensure_collection()
         print(f"Cleared collection '{self.collection_name}'.")
 
     def delete_document(self, filename: str):
         """Delete all chunks associated with a specific filename."""
+        self._ensure_client()  # Lazy init
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=models.FilterSelector(
