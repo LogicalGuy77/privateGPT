@@ -235,11 +235,11 @@ class SettingsDialog(QDialog):
         strategy_layout = QVBoxLayout()
         self.rag_strategy_combo = QComboBox()
         self.rag_strategy_combo.addItems([
-            "Smart (Recommended) - Uses semantic similarity",
             "Always - Use RAG for all queries if documents exist",
+            "Smart - Uses semantic similarity (Recommended)",
             "Explicit Only - Only when files are mentioned"
         ])
-        self.rag_strategy_combo.setCurrentIndex(0)  # Smart default
+        self.rag_strategy_combo.setCurrentIndex(0)  # Always default
         self.rag_strategy_combo.currentIndexChanged.connect(self.update_rag_info)
         
         strategy_layout.addWidget(QLabel("RAG Strategy:"))
@@ -247,7 +247,7 @@ class SettingsDialog(QDialog):
         
         # RAG info label
         self.rag_info_label = QLabel(
-            "Smart mode checks semantic similarity to decide if documents are relevant."
+            "Always mode uses RAG for every query if any documents exist in knowledge base."
         )
         self.rag_info_label.setStyleSheet("color: #888; font-size: 11px;")
         self.rag_info_label.setWordWrap(True)
@@ -287,8 +287,8 @@ class SettingsDialog(QDialog):
     def update_rag_info(self, index: int):
         """Update RAG info label based on selected strategy."""
         info_texts = [
-            "Smart mode checks semantic similarity to decide if documents are relevant.",
             "Always mode uses RAG for every query if any documents exist in knowledge base.",
+            "Smart mode checks semantic similarity to decide if documents are relevant.",
             "Explicit mode only uses RAG when you mention files like 'in report.pdf'."
         ]
         self.rag_info_label.setText(info_texts[index])
@@ -365,7 +365,7 @@ class SettingsDialog(QDialog):
         
         # RAG settings
         if "rag_strategy" in self.current_settings:
-            strategy_map = {"smart": 0, "always": 1, "explicit": 2}
+            strategy_map = {"always": 0, "smart": 1, "explicit": 2}
             idx = strategy_map.get(self.current_settings["rag_strategy"], 0)
             self.rag_strategy_combo.setCurrentIndex(idx)
         
@@ -389,7 +389,7 @@ class SettingsDialog(QDialog):
             "max_tokens": self.tokens_slider.value(),
             
             # RAG settings
-            "rag_strategy": ["smart", "always", "explicit"][self.rag_strategy_combo.currentIndex()],
+            "rag_strategy": ["always", "smart", "explicit"][self.rag_strategy_combo.currentIndex()],
             "relevance_threshold": self.threshold_slider.value() / 100.0
         }
     
@@ -401,7 +401,7 @@ class SettingsDialog(QDialog):
         self.temp_slider.setValue(70)  # 0.70
         self.topp_slider.setValue(95)  # 0.95
         self.tokens_slider.setValue(2048)
-        self.rag_strategy_combo.setCurrentIndex(0)  # Smart
+        self.rag_strategy_combo.setCurrentIndex(0)  # Always
         self.threshold_slider.setValue(50)  # 0.5
     
     def apply_settings(self):
