@@ -27,11 +27,16 @@ retrieval_service.set_relevance_threshold(0.7)  # Make similarity check stricter
 """
 
 import re
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, List
 from private_gpt_app.rag.vector_store import vector_store
 from private_gpt_app.rag.hybrid_search import hybrid_search
 from private_gpt_app.rag.chunking import token_chunker
 from private_gpt_app.utils.performance import perf_monitor
+
+# Thread pool for async operations
+_executor = ThreadPoolExecutor(max_workers=4)
 
 class QueryRouter:
     """Intelligent router using semantic similarity to decide RAG usage."""
@@ -122,10 +127,10 @@ class RetrievalService:
     
     # RAG Strategy modes
     RAG_ALWAYS = "always"  # Always use RAG if documents exist
-    RAG_SMART = "smart"    # Use semantic similarity scoring (default)
+    RAG_SMART = "smart"    # Use semantic similarity scoring
     RAG_EXPLICIT = "explicit"  # Only when user explicitly mentions files
     
-    def __init__(self, rag_strategy: str = "smart"):
+    def __init__(self, rag_strategy: str = "always"):
         self.router = QueryRouter()
         self.rag_strategy = rag_strategy
         self.use_hybrid_search = True  # Enable hybrid search by default
@@ -139,7 +144,7 @@ class RetrievalService:
         filter_filename: str = None
     ) -> Dict:
         """
-        Retrieve relevant context for a query with hybrid search.
+        Retrieve relevant context for a query with hybrid search (sync version).
         
         Args:
             query: User's query
@@ -150,6 +155,42 @@ class RetrievalService:
         Returns:
             Dict with 'context' (str), 'sources' (list), and 'used_rag' (bool)
         """
+        return self._retrieve_impl(query, top_k, use_hybrid, filter_filename)
+    
+    async def retrieve_context_async(
+        self,
+        query: str,
+        top_k: int = 5,
+        use_hybrid: bool = None,
+        filter_filename: str = None
+    ) -> Dict:
+        """
+        Async version of retrieve_context for non-blocking RAG.
+        
+        Args:
+            query: User's query
+            top_k: Number of chunks to retrieve
+            use_hybrid: Override hybrid search setting
+            filter_filename: Optional filename to filter results to specific document
+            
+        Returns:
+            Dict with 'context' (str), 'sources' (list), and 'used_rag' (bool)
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            _executor,
+            self._retrieve_impl,
+            query, top_k, use_hybrid, filter_filename
+        )
+    
+    def _retrieve_impl(
+        self,
+        query: str,
+        top_k: int,
+        use_hybrid: bool,
+        filter_filename: str
+    ) -> Dict:
+        """Internal implementation of context retrieval."""
         # Start performance tracking
         perf_monitor.start_timer('rag_retrieval')
         

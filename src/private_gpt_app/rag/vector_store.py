@@ -36,27 +36,41 @@ class VectorStore:
                 )
             )
 
-    def add_documents(self, texts: List[str], metadatas: List[Dict]):
-        """Add documents to the vector store."""
+    def add_documents(self, texts: List[str], metadatas: List[Dict], batch_size: int = 100):
+        """Add documents to vector store with batching for large document sets."""
         if not texts:
             return
         
         self._ensure_client()  # Lazy init
-        embeddings = embedding_service.embed_documents(texts)
         
-        points = [
-            models.PointStruct(
-                id=str(uuid.uuid4()),
-                vector=embedding,
-                payload={"text": text, **metadata}
+        # Process embeddings in batches
+        from .embeddings import embedding_service
+        embeddings = embedding_service.embed_documents(texts, batch_size=batch_size)
+        
+        # Batch upsert for efficiency
+        total_points = len(texts)
+        for i in range(0, total_points, batch_size):
+            batch_texts = texts[i:i + batch_size]
+            batch_embeddings = embeddings[i:i + batch_size]
+            batch_metadatas = metadatas[i:i + batch_size]
+            
+            points = [
+                models.PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=embedding,
+                    payload={"text": text, **metadata}
+                )
+                for text, embedding, metadata in zip(batch_texts, batch_embeddings, batch_metadatas)
+            ]
+            
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=points
             )
-            for text, embedding, metadata in zip(texts, embeddings, metadatas)
-        ]
-
-        self.client.upsert(
-            collection_name=self.collection_name,
-            points=points
-        )
+            
+            if total_points > batch_size:
+                print(f"Progress: {min(i + batch_size, total_points)}/{total_points} documents")
+        
         print(f"Added {len(texts)} documents to Qdrant.")
 
     def search(self, query: str, limit: int = 5, filter_metadata: Optional[Dict] = None) -> List[Dict]:

@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
             "temperature": 0.7,
             "top_p": 0.95,
             "max_tokens": 1024,
-            "rag_strategy": "smart",
+            "rag_strategy": "always",
             "relevance_threshold": 0.5
         }
         
@@ -496,14 +496,21 @@ class MainWindow(QMainWindow):
         if self.rag_enabled:
             # If files are selected, filter by those files
             if self.selected_files:
-                # Retrieve context for each selected file and combine
+                # Retrieve context for each selected file and combine (async)
                 all_contexts = []
                 all_sources = set()
-                for filename in self.selected_files:
-                    result = retrieval_service.retrieve_context(
-                        user_message, 
+                
+                # Use asyncio.gather for parallel retrieval
+                tasks = [
+                    retrieval_service.retrieve_context_async(
+                        user_message,
                         filter_filename=filename
                     )
+                    for filename in self.selected_files
+                ]
+                results = await asyncio.gather(*tasks)
+                
+                for result in results:
                     if result['context']:
                         all_contexts.append(result['context'])
                         all_sources.update(result['sources'])
@@ -513,8 +520,8 @@ class MainWindow(QMainWindow):
                     sources = list(all_sources)
                     used_rag = True
             else:
-                # Normal RAG retrieval
-                retrieval_result = retrieval_service.retrieve_context(user_message)
+                # Normal RAG retrieval (async for non-blocking)
+                retrieval_result = await retrieval_service.retrieve_context_async(user_message)
                 context = retrieval_result['context']
                 sources = retrieval_result['sources']
                 used_rag = retrieval_result['used_rag']
