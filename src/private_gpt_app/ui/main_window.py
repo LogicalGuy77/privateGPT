@@ -857,5 +857,9 @@ class MainWindow(QMainWindow):
             "<li>Session Management with FTS5 Search</li>"
             "<li>Optimized for 4GB+ VRAM GPUs</li>"
             "</ul>"
+            "<p><b>Developer:</b></p>"
+            "<p>Email: <a href='mailto:harshitacademia@gmail.com'>harshitacademia@gmail.com</a><br>"
+            "Twitter: <a href='https://x.com/HarshitNay80531'>@HarshitNay80531</a><br>"
+            "GitHub: <a href='https://github.com/LogicalGuy77'>LogicalGuy77</a></p>"
             "<p>Licensed under MIT License</p>"
         )
