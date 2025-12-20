@@ -29,13 +29,18 @@ def setup_app() -> QApplication:
 
 def load_stylesheet(app: QApplication, dev_mode: bool = False) -> None:
     """Load and apply QSS stylesheet."""
-    style_path = Path(__file__).parent / "ui" / "styles.qss"
+    # Try modern stylesheet first
+    style_path = Path(__file__).parent / "ui" / "styles_modern.qss"
+    
+    if not style_path.exists():
+        # Fallback to original stylesheet
+        style_path = Path(__file__).parent / "ui" / "styles.qss"
     
     if style_path.exists():
         with open(style_path, "r") as f:
             stylesheet = f.read()
             app.setStyleSheet(stylesheet)
-        print(f"✓ Loaded stylesheet from {style_path}")
+        print(f"✓ Loaded stylesheet: {style_path.name}")
     else:
         print(f"⚠ Stylesheet not found at {style_path}")
     

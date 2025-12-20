@@ -6,7 +6,9 @@ from typing import Optional, AsyncIterator, Callable
 from dataclasses import dataclass
 
 # Memory optimizations
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+# NOTE: PYTORCH_CUDA_ALLOC_CONF is deprecated; prefer PYTORCH_ALLOC_CONF.
+os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 @dataclass
@@ -124,7 +126,7 @@ class VLLMService:
     
     async def generate_stream(
         self,
-        prompt: str,
+        messages: list[dict],
         config: GenerationConfig,
         context: str = ""
     ) -> AsyncIterator[str]:
@@ -132,7 +134,7 @@ class VLLMService:
         Generate streaming response.
         
         Args:
-            prompt: User prompt
+            messages: Chat messages (conversation history)
             config: Generation configuration
             context: Optional context from RAG
             
@@ -144,6 +146,9 @@ class VLLMService:
         
         from vllm import SamplingParams
         
+        # Get the last user message
+        user_message = messages[-1]['content'] if messages else ""
+        
         # Construct prompt with context if provided
         if context:
             full_prompt = f"""Use the following context to answer the user's question. If the answer is not in the context, say so.
@@ -152,20 +157,26 @@ Context:
 {context}
 
 Question:
-{prompt}"""
+{user_message}"""
         else:
-            full_prompt = prompt
-            
-        # Format for ChatML
-        messages = [
-            {"role": "system", "content": config.system_prompt},
-            {"role": "user", "content": full_prompt}
+            full_prompt = user_message
+        
+        # Build messages with system prompt and history
+        chat_messages = [
+            {"role": "system", "content": config.system_prompt}
         ]
+        
+        # Add conversation history (excluding the last message as we'll add it with context)
+        for msg in messages[:-1]:
+            chat_messages.append(msg)
+        
+        # Add the final user message (with context if RAG is used)
+        chat_messages.append({"role": "user", "content": full_prompt})
         
         # Use tokenizer to apply chat template
         tokenizer = self._llm.get_tokenizer()
         formatted_prompt = tokenizer.apply_chat_template(
-            messages,
+            chat_messages,
             tokenize=False,
             add_generation_prompt=True
         )
@@ -176,23 +187,22 @@ Question:
             max_tokens=config.max_tokens,
             stop=["<|im_end|>", "<|endoftext|>"]
         )
-        
-        request_id = f"req_{id(prompt)}"
-        
-        # Add request to engine
-        results_generator = self._llm.generate(
-            formatted_prompt,
-            sampling_params,
-            request_id=request_id
-        )
-        
-        # Stream results
-        previous_text = ""
-        async for request_output in results_generator:
-            current_text = request_output.outputs[0].text
-            new_text = current_text[len(previous_text):]
-            previous_text = current_text
-            yield new_text
+
+        # vLLM's `LLM.generate()` API is synchronous and does not accept `request_id`.
+        # To preserve the UI's streaming behavior, generate once in an executor and
+        # yield the result in small chunks.
+        loop = asyncio.get_event_loop()
+
+        def _generate_once() -> str:
+            outputs = self._llm.generate([formatted_prompt], sampling_params=sampling_params)
+            return outputs[0].outputs[0].text
+
+        full_text = await loop.run_in_executor(None, _generate_once)
+
+        chunk_size = 24
+        for i in range(0, len(full_text), chunk_size):
+            yield full_text[i : i + chunk_size]
+            await asyncio.sleep(0)
     
     async def generate(
         self,

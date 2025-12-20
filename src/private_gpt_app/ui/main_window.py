@@ -13,6 +13,7 @@ from private_gpt_app.ui.chat_widget import ChatWidget
 from private_gpt_app.ui.settings_dialog import SettingsDialog
 from private_gpt_app.ui.knowledge_base_dialog import KnowledgeBaseDialog
 from private_gpt_app.ui.session_sidebar import SessionSidebar
+from private_gpt_app.ui.performance_dialog import PerformanceDialog
 from private_gpt_app.backend.vllm_service import VLLMService, GenerationConfig
 from private_gpt_app.backend.router import retrieval_service
 from private_gpt_app.backend.session_manager import session_manager, trim_conversation
@@ -21,6 +22,7 @@ from private_gpt_app.utils.gpu_monitor import (
     recommend_settings, get_current_vram_usage
 )
 from private_gpt_app.utils.crash_recovery import CrashRecovery
+from private_gpt_app.utils.performance import perf_monitor
 
 
 class MainWindow(QMainWindow):
@@ -63,6 +65,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Private-GPT")
         self.setMinimumSize(QSize(1200, 800))
         
+        # Create menu bar
+        self.create_menu_bar()
+        
         # Create central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -89,6 +94,44 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         
         main_layout.addWidget(splitter)
+    
+    def create_menu_bar(self):
+        """Create application menu bar."""
+        menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu("&File")
+        
+        new_chat_action = file_menu.addAction("New Chat")
+        new_chat_action.setShortcut("Ctrl+N")
+        new_chat_action.triggered.connect(self.on_new_chat)
+        
+        file_menu.addSeparator()
+        
+        quit_action = file_menu.addAction("Quit")
+        quit_action.setShortcut("Ctrl+Q")
+        quit_action.triggered.connect(self.close)
+        
+        # Tools menu
+        tools_menu = menubar.addMenu("&Tools")
+        
+        kb_action = tools_menu.addAction("Knowledge Base")
+        kb_action.setShortcut("Ctrl+K")
+        kb_action.triggered.connect(self.open_knowledge_base)
+        
+        tools_menu.addSeparator()
+        
+        perf_action = tools_menu.addAction("Performance Stats")
+        perf_action.triggered.connect(self.show_performance_stats)
+        
+        settings_action = tools_menu.addAction("Settings")
+        settings_action.triggered.connect(self.show_settings)
+        
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+        
+        about_action = help_menu.addAction("About")
+        about_action.triggered.connect(self.show_about)
     
     def create_sidebar(self) -> QWidget:
         """Create the sidebar with session management."""
@@ -494,6 +537,53 @@ class MainWindow(QMainWindow):
         self.crash_recovery.start_session()
         self.status_label.setText("New chat started")
     
+    def on_session_selected(self, session_id: int):
+        """Handle session selection from sidebar."""
+        # Save current session before switching
+        if self.current_session_id and self.conversation_history:
+            session_manager.update_session(self.current_session_id, self.conversation_history)
+        
+        # Load selected session
+        session = session_manager.get_session(session_id)
+        if not session:
+            self.status_label.setText("❌ Session not found")
+            return
+        
+        # Update current session
+        self.current_session_id = session_id
+        self.conversation_history = session['messages']
+        
+        # Clear and reload chat display
+        self.chat_widget.clear_messages()
+        for msg in self.conversation_history:
+            is_user = (msg["role"] == "user")
+            self.chat_widget.add_message(msg["content"], is_user=is_user)
+        
+        # Update UI
+        self.session_sidebar.set_current_session(session_id)
+        self.status_label.setText(f"Loaded: {session['title']}")
+    
+    def on_session_deleted(self, session_id: int):
+        """Handle session deletion."""
+        # If deleted session was current, start new chat
+        if self.current_session_id == session_id:
+            self.on_new_chat()
+        
+        self.status_label.setText("Session deleted")
+    
+    def toggle_rag(self):
+        """Toggle RAG on/off."""
+        self.rag_enabled = not self.rag_enabled
+        
+        if self.rag_enabled:
+            self.rag_toggle_btn.setText("📚 RAG: ON")
+            self.rag_toggle_btn.setChecked(True)
+            self.status_label.setText("RAG enabled")
+        else:
+            self.rag_toggle_btn.setText("📚 RAG: OFF")
+            self.rag_toggle_btn.setChecked(False)
+            self.status_label.setText("RAG disabled")
+    
     def show_settings(self):
         """Show settings dialog."""
         dialog = SettingsDialog(self, self.current_settings)
@@ -593,3 +683,27 @@ class MainWindow(QMainWindow):
         """Open the Knowledge Base management dialog."""
         dialog = KnowledgeBaseDialog(self)
         dialog.exec()
+    
+    def show_performance_stats(self):
+        """Show performance statistics dialog."""
+        dialog = PerformanceDialog(self)
+        dialog.exec()
+    
+    def show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(
+            self,
+            "About Private-GPT",
+            "<h2>Private-GPT</h2>"
+            "<p>Version 0.2.0</p>"
+            "<p>A local, privacy-focused desktop chat application<br>"
+            "powered by Qwen2.5-3B-Instruct-AWQ with vLLM acceleration.</p>"
+            "<p><b>Features:</b></p>"
+            "<ul>"
+            "<li>100% Local & Private</li>"
+            "<li>RAG with Qdrant & Hybrid Search</li>"
+            "<li>Session Management with FTS5 Search</li>"
+            "<li>Optimized for 4GB+ VRAM GPUs</li>"
+            "</ul>"
+            "<p>Licensed under MIT License</p>"
+        )

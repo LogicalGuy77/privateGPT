@@ -1,8 +1,11 @@
-"""Simple query router for RAG vs direct LLM calls."""
+"""Advanced query router with hybrid search and smart context truncation."""
 
 import re
 from typing import Optional, Dict, List
 from private_gpt_app.rag.vector_store import vector_store
+from private_gpt_app.rag.hybrid_search import hybrid_search
+from private_gpt_app.rag.chunking import token_chunker
+from private_gpt_app.utils.performance import perf_monitor
 
 class QueryRouter:
     """Lightweight router to decide between RAG and direct LLM inference."""
@@ -68,24 +71,36 @@ class QueryRouter:
         return None
 
 class RetrievalService:
-    """Service for retrieving relevant context from the knowledge base."""
+    """Service for retrieving relevant context with hybrid search and smart truncation."""
     
     def __init__(self):
         self.router = QueryRouter()
+        self.use_hybrid_search = True  # Enable hybrid search by default
+        self.max_context_tokens = 1500  # Maximum tokens for context
     
-    def retrieve_context(self, query: str, top_k: int = 5) -> Dict:
+    def retrieve_context(
+        self, 
+        query: str, 
+        top_k: int = 5,
+        use_hybrid: bool = None
+    ) -> Dict:
         """
-        Retrieve relevant context for a query.
+        Retrieve relevant context for a query with hybrid search.
         
         Args:
             query: User's query
             top_k: Number of chunks to retrieve
+            use_hybrid: Override hybrid search setting
             
         Returns:
             Dict with 'context' (str), 'sources' (list), and 'used_rag' (bool)
         """
+        # Start performance tracking
+        perf_monitor.start_timer('rag_retrieval')
+        
         # Check if RAG should be used
         if not self.router.should_use_rag(query):
+            perf_monitor.end_timer('rag_retrieval')
             return {
                 'context': '',
                 'sources': [],
@@ -98,34 +113,60 @@ class RetrievalService:
         
         # Search vector store
         try:
-            results = vector_store.search(
+            # Get semantic search results
+            perf_monitor.start_timer('semantic_search')
+            semantic_results = vector_store.search(
                 query, 
-                limit=top_k,
+                limit=top_k * 2,  # Get more for hybrid reranking
                 filter_metadata=filter_metadata
             )
+            perf_monitor.end_timer('semantic_search')
             
-            if not results:
+            if not semantic_results:
+                perf_monitor.end_timer('rag_retrieval')
                 return {
                     'context': '',
                     'sources': [],
                     'used_rag': False
                 }
             
-            # Construct context from results
-            context_parts = []
-            sources = []
+            # Optionally use hybrid search
+            should_hybrid = use_hybrid if use_hybrid is not None else self.use_hybrid_search
             
-            for i, result in enumerate(results, 1):
-                text = result['text']
-                source = result['metadata'].get('source', 'Unknown')
-                score = result['score']
+            if should_hybrid and len(semantic_results) > 0:
+                perf_monitor.start_timer('hybrid_rerank')
                 
-                context_parts.append(f"[Source {i}: {source} (relevance: {score:.2f})]\n{text}\n")
+                # Build BM25 index from results
+                documents = [
+                    {'text': r['text'], 'metadata': r['metadata']}
+                    for r in semantic_results
+                ]
+                hybrid_search.index_documents(documents)
                 
-                if source not in sources:
-                    sources.append(source)
+                # Get BM25 results
+                bm25_results = hybrid_search.search_bm25(query, top_k=top_k * 2)
+                
+                # Merge and rerank
+                merged_results = hybrid_search.merge_results(
+                    semantic_results,
+                    bm25_results,
+                    semantic_weight=0.6,
+                    bm25_weight=0.4
+                )
+                
+                # Take top-k from merged results
+                final_results = merged_results[:top_k]
+                perf_monitor.end_timer('hybrid_rerank')
+            else:
+                # Use semantic results only
+                final_results = semantic_results[:top_k]
             
-            context = "\n".join(context_parts)
+            # Smart context construction with token truncation
+            perf_monitor.start_timer('context_construction')
+            context, sources = self._construct_smart_context(final_results, query)
+            perf_monitor.end_timer('context_construction')
+            
+            perf_monitor.end_timer('rag_retrieval')
             
             return {
                 'context': context,
@@ -135,11 +176,68 @@ class RetrievalService:
             
         except Exception as e:
             print(f"Error during retrieval: {e}")
+            perf_monitor.end_timer('rag_retrieval')
             return {
                 'context': '',
                 'sources': [],
                 'used_rag': False
             }
+    
+    def _construct_smart_context(self, results: List[Dict], query: str) -> tuple:
+        """
+        Construct context with smart token-based truncation.
+        
+        Args:
+            results: Search results with scores
+            query: Original query
+            
+        Returns:
+            Tuple of (context_str, sources_list)
+        """
+        context_parts = []
+        sources = []
+        total_tokens = 0
+        
+        # Reserve tokens for formatting
+        formatting_tokens = 50
+        available_tokens = self.max_context_tokens - formatting_tokens
+        
+        for i, result in enumerate(results, 1):
+            text = result['text']
+            source = result['metadata'].get('source', 'Unknown')
+            score = result.get('combined_score') or result.get('score', 0.0)
+            
+            # Count tokens for this chunk
+            chunk_tokens = token_chunker.count_tokens(text)
+            
+            # Check if adding this chunk would exceed limit
+            if total_tokens + chunk_tokens > available_tokens:
+                # Try to truncate the chunk to fit
+                remaining_tokens = available_tokens - total_tokens
+                if remaining_tokens > 50:  # Only include if at least 50 tokens
+                    text = token_chunker.truncate_to_tokens(text, remaining_tokens)
+                    chunk_tokens = remaining_tokens
+                else:
+                    break  # Stop adding chunks
+            
+            # Add to context
+            context_parts.append(f"[{i}] {text}")
+            total_tokens += chunk_tokens
+            
+            if source not in sources:
+                sources.append(source)
+            
+            # Stop if we've reached token limit
+            if total_tokens >= available_tokens:
+                break
+        
+        # Format final context
+        if context_parts:
+            context = "Relevant information:\n\n" + "\n\n".join(context_parts)
+        else:
+            context = ""
+        
+        return context, sources
 
 # Global instance
 retrieval_service = RetrievalService()
