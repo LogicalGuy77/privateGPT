@@ -12,8 +12,10 @@ from PyQt6.QtGui import QFont
 from private_gpt_app.ui.chat_widget import ChatWidget
 from private_gpt_app.ui.settings_dialog import SettingsDialog
 from private_gpt_app.ui.knowledge_base_dialog import KnowledgeBaseDialog
+from private_gpt_app.ui.session_sidebar import SessionSidebar
 from private_gpt_app.backend.vllm_service import VLLMService, GenerationConfig
 from private_gpt_app.backend.router import retrieval_service
+from private_gpt_app.backend.session_manager import session_manager, trim_conversation
 from private_gpt_app.utils.gpu_monitor import (
     detect_gpu, validate_hardware_requirements, print_gpu_info,
     recommend_settings, get_current_vram_usage
@@ -30,6 +32,8 @@ class MainWindow(QMainWindow):
         self.llm_service = None
         self.conversation_history = []
         self.gpu_info = None
+        self.current_session_id = None
+        self.rag_enabled = True  # RAG toggle
         self.current_settings = {
             "gpu_memory_utilization": 0.55,
             "max_model_len": 2048,
@@ -41,6 +45,9 @@ class MainWindow(QMainWindow):
         
         # Crash recovery system
         self.crash_recovery = CrashRecovery()
+        
+        # Start with a new session
+        self.current_session_id = session_manager.create_session()
         
         # Check hardware if not in mock mode
         if not mock_mode:
@@ -84,24 +91,22 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
     
     def create_sidebar(self) -> QWidget:
-        """Create the sidebar with session list."""
-        sidebar = QWidget()
-        sidebar.setObjectName("sidebar")
-        sidebar.setMinimumWidth(250)
-        sidebar.setMaximumWidth(400)
+        """Create the sidebar with session management."""
+        sidebar_container = QWidget()
+        sidebar_container.setObjectName("sidebar")
+        sidebar_container.setMinimumWidth(250)
+        sidebar_container.setMaximumWidth(400)
         
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout = QVBoxLayout(sidebar_container)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
-        # Header
-        header_label = QLabel("Chat History")
-        header_label.setObjectName("sidebarHeader")
-        font = QFont()
-        font.setPointSize(14)
-        font.setBold(True)
-        header_label.setFont(font)
-        layout.addWidget(header_label)
+        # Session sidebar
+        self.session_sidebar = SessionSidebar(session_manager)
+        self.session_sidebar.session_selected.connect(self.on_session_selected)
+        self.session_sidebar.new_session_requested.connect(self.on_new_chat)
+        self.session_sidebar.session_deleted.connect(self.on_session_deleted)
+        layout.addWidget(self.session_sidebar)
         
         # Knowledge Base Button
         kb_btn = QPushButton("📚 Knowledge Base")
@@ -117,28 +122,24 @@ class MainWindow(QMainWindow):
             QPushButton:hover { background-color: #3d3d3d; }
         """)
         layout.addWidget(kb_btn)
-
-        header_label.setFont(font)
-        layout.addWidget(header_label)
         
-        # New Chat button
-        self.new_chat_btn = QPushButton("+ New Chat")
-        self.new_chat_btn.setObjectName("newChatButton")
-        self.new_chat_btn.setMinimumHeight(40)
-        layout.addWidget(self.new_chat_btn)
-        
-        # Session list
-        self.session_list = QListWidget()
-        self.session_list.setObjectName("sessionList")
-        layout.addWidget(self.session_list)
-        
-        # Add placeholder sessions for demo
-        self.session_list.addItems([
-            "Today - New Chat",
-            "Yesterday - Project Discussion",
-            "Dec 18 - Code Review",
-            "Dec 17 - Documentation",
-        ])
+        # RAG Toggle
+        self.rag_toggle_btn = QPushButton("📚 RAG: ON")
+        self.rag_toggle_btn.setCheckable(True)
+        self.rag_toggle_btn.setChecked(True)
+        self.rag_toggle_btn.clicked.connect(self.toggle_rag)
+        self.rag_toggle_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                padding: 8px;
+                background-color: #2d2d2d;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+            }
+            QPushButton:checked { background-color: #00aa44; }
+            QPushButton:hover { background-color: #3d3d3d; }
+        """)
+        layout.addWidget(self.rag_toggle_btn)
         
         # VRAM Monitor
         self.vram_label = QLabel("VRAM: --")
@@ -159,7 +160,7 @@ class MainWindow(QMainWindow):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
         
-        return sidebar
+        return sidebar_container
     
     def create_chat_area(self) -> QWidget:
         """Create the main chat area."""
@@ -235,15 +236,33 @@ class MainWindow(QMainWindow):
         """Connect signals and slots."""
         self.send_btn.clicked.connect(self.on_send_message)
         self.clear_btn.clicked.connect(self.on_clear_input)
-        self.new_chat_btn.clicked.connect(self.on_new_chat)
         
-        # Enable Ctrl+Enter to send
+        # Enable keyboard shortcuts
         self.input_field.installEventFilter(self)
     
     def eventFilter(self, obj, event):
         """Handle keyboard shortcuts."""
         from PyQt6.QtCore import QEvent
-        from PyQt6.QtGui import QKeyEvent
+        from PyQt6.QtGui import QKeyEvent, QKeySequence
+        
+        if obj == self.input_field and event.type() == QEvent.Type.KeyPress:
+            # Ctrl+Enter to send
+            if event.key() == Qt.Key.Key_Return and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                self.on_send_message()
+                return True
+            # Ctrl+N for new chat
+            elif event.key() == Qt.Key.Key_N and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                self.on_new_chat()
+                return True
+            # Ctrl+K for knowledge base
+            elif event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                self.open_knowledge_base()
+                return True
+            # Ctrl+L to clear chat
+            elif event.key() == Qt.Key.Key_L and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+                self.on_new_chat()
+                return True
+        
         return super().eventFilter(obj, event)
     
     def check_hardware(self):
@@ -341,11 +360,16 @@ class MainWindow(QMainWindow):
         self.status_label.setText("⏳ Generating...")
         self.rag_label.setText("")
         
-        # Retrieve context if RAG should be used
-        retrieval_result = retrieval_service.retrieve_context(user_message)
-        context = retrieval_result['context']
-        sources = retrieval_result['sources']
-        used_rag = retrieval_result['used_rag']
+        # Retrieve context if RAG should be used and is enabled
+        context = ""
+        sources = []
+        used_rag = False
+        
+        if self.rag_enabled:
+            retrieval_result = retrieval_service.retrieve_context(user_message)
+            context = retrieval_result['context']
+            sources = retrieval_result['sources']
+            used_rag = retrieval_result['used_rag']
         
         # Update RAG indicator
         if used_rag and sources:
@@ -387,7 +411,10 @@ class MainWindow(QMainWindow):
                         self.status_label.setText("Ready")
                         return
                 
-                # Generate with streaming (pass messages directly)
+                # Trim conversation to prevent context overflow (sliding window)
+                trimmed_history = trim_conversation(self.conversation_history, max_messages=10)
+                
+                # Generate with streaming (pass trimmed messages)
                 self.chat_widget.start_assistant_message()
                 
                 full_response = ""
@@ -398,7 +425,7 @@ class MainWindow(QMainWindow):
                 )
                 
                 # Pass context to LLM if RAG is used
-                async for token in self.llm_service.generate_stream(self.conversation_history, config, context=context):
+                async for token in self.llm_service.generate_stream(trimmed_history, config, context=context):
                     self.chat_widget.append_to_current_message(token)
                     full_response += token
                     await asyncio.sleep(0)  # Allow UI updates
@@ -417,7 +444,18 @@ class MainWindow(QMainWindow):
                     "content": full_response
                 })
                 
-                # Auto-save conversation
+                # Auto-save to session database
+                if self.current_session_id:
+                    # Auto-generate title from first message if still "New Chat"
+                    session = session_manager.get_session(self.current_session_id)
+                    if session and (session['title'] == 'New Chat' and len(self.conversation_history) >= 2):
+                        title = session_manager.auto_generate_title(self.conversation_history)
+                        session_manager.update_session(self.current_session_id, self.conversation_history, title=title)
+                        self.session_sidebar.refresh()
+                    else:
+                        session_manager.update_session(self.current_session_id, self.conversation_history)
+                
+                # Crash recovery backup
                 self.crash_recovery.save_conversation(self.conversation_history)
                 
                 print(f"✓ Generated {len(full_response)} characters")
@@ -440,10 +478,20 @@ class MainWindow(QMainWindow):
     
     def on_new_chat(self):
         """Start a new chat session."""
+        # Create new session in database
+        self.current_session_id = session_manager.create_session()
+        
+        # Clear UI
         self.chat_widget.clear_messages()
         self.input_field.clear()
-        self.conversation_history.clear()  # Reset conversation history
-        self.crash_recovery.start_session()  # Start new recovery session
+        self.conversation_history.clear()
+        
+        # Update sidebar
+        self.session_sidebar.set_current_session(self.current_session_id)
+        self.session_sidebar.refresh()
+        
+        # Start new recovery session
+        self.crash_recovery.start_session()
         self.status_label.setText("New chat started")
     
     def show_settings(self):
