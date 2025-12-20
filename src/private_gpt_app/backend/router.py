@@ -1,4 +1,30 @@
-"""Advanced query router with hybrid search and smart context truncation."""
+"""Advanced query router with hybrid search and smart context truncation.
+
+RAG Context Management:
+----------------------
+This module provides intelligent RAG (Retrieval Augmented Generation) with three strategies:
+
+1. SMART (Default, Recommended):
+   - Uses semantic similarity to decide if documents are relevant
+   - Adjustable relevance threshold (default 0.5)
+   - Automatically uses RAG when documents match the query well
+   - Example: "what is in the cover letter?" → checks similarity with all docs
+   
+2. ALWAYS:
+   - Always uses RAG if any documents exist in knowledge base
+   - Good for dedicated document Q&A systems
+   - May include irrelevant context for general queries
+   
+3. EXPLICIT:
+   - Only uses RAG when user explicitly mentions files
+   - Example: "in report.pdf" or "from the analysis.docx"
+   - Most conservative, but requires explicit user intent
+
+Configuration:
+-------------
+retrieval_service.set_rag_strategy("smart")  # Change strategy
+retrieval_service.set_relevance_threshold(0.7)  # Make similarity check stricter
+"""
 
 import re
 from typing import Optional, Dict, List
@@ -8,46 +34,67 @@ from private_gpt_app.rag.chunking import token_chunker
 from private_gpt_app.utils.performance import perf_monitor
 
 class QueryRouter:
-    """Lightweight router to decide between RAG and direct LLM inference."""
-    
-    # Keywords that suggest the user wants to query documents
-    RAG_KEYWORDS = [
-        r'\bdocument\b', r'\bfile\b', r'\bpdf\b', r'\bpaper\b', r'\breport\b',
-        r'\bin the\b.*\b(document|file|pdf|text)\b',
-        r'\baccording to\b', r'\bbased on\b', r'\bfrom the\b',
-        r'\bwhat does.*say\b', r'\bsummarize\b', r'\bsummary\b',
-        r'\bfind\b.*\bin\b', r'\bsearch\b.*\bfor\b',
-        r'\bknowledge base\b', r'\buploaded\b', r'\bfiles?\b'
-    ]
+    """Intelligent router using semantic similarity to decide RAG usage."""
     
     def __init__(self):
-        self.rag_pattern = re.compile('|'.join(self.RAG_KEYWORDS), re.IGNORECASE)
+        self.relevance_threshold = 0.5  # Minimum similarity score to use RAG
+        self.always_rag_patterns = [
+            # Only explicit file references require RAG
+            r'\b(?:in|from|according to)\s+(?:the\s+)?([a-zA-Z0-9_\-\s]+\.(?:pdf|docx|txt|md))\b',
+        ]
+        self.always_rag_regex = re.compile('|'.join(self.always_rag_patterns), re.IGNORECASE)
     
-    def should_use_rag(self, query: str) -> bool:
+    def should_use_rag(self, query: str, top_k: int = 3) -> bool:
         """
-        Determine if RAG should be used for this query.
+        Intelligently determine if RAG should be used based on semantic relevance.
+        
+        Strategy:
+        1. If user explicitly mentions a file -> always use RAG
+        2. Otherwise, check semantic similarity with knowledge base
+        3. If top results have high similarity -> use RAG
+        4. If no relevant documents -> direct LLM
         
         Args:
             query: User's query string
+            top_k: Number of top results to check for relevance
             
         Returns:
             True if RAG should be used, False for direct LLM
         """
-        # Check if query matches RAG keywords
-        if self.rag_pattern.search(query):
+        # 1. Check for explicit file references
+        if self.always_rag_regex.search(query):
             return True
         
-        # Check if there are any documents in the knowledge base
-        # If no documents, always use direct LLM
+        # 2. Check if documents exist in knowledge base
         try:
-            # Do a quick test search - if it returns nothing, no documents exist
-            test_results = vector_store.search("test", limit=1)
-            if not test_results:
+            # Semantic search to find most relevant documents
+            results = vector_store.search(query, limit=top_k)
+            
+            if not results:
+                # No documents in knowledge base
                 return False
-        except Exception:
+            
+            # 3. Check relevance scores
+            # Most vector stores return scores between 0-1 or use distance metrics
+            # Higher score = more relevant
+            top_score = results[0].get('score', 0) if results else 0
+            
+            # If top result is highly relevant, use RAG
+            if top_score >= self.relevance_threshold:
+                return True
+            
+            # For lower scores, be more conservative
+            # Only use RAG if multiple results are somewhat relevant
+            relevant_count = sum(1 for r in results if r.get('score', 0) >= self.relevance_threshold * 0.8)
+            if relevant_count >= 2:
+                return True
+            
             return False
-        
-        return False
+            
+        except Exception as e:
+            # If vector store fails, don't use RAG
+            print(f"RAG check failed: {e}")
+            return False
     
     def extract_filename_filter(self, query: str) -> Optional[str]:
         """
@@ -73,16 +120,23 @@ class QueryRouter:
 class RetrievalService:
     """Service for retrieving relevant context with hybrid search and smart truncation."""
     
-    def __init__(self):
+    # RAG Strategy modes
+    RAG_ALWAYS = "always"  # Always use RAG if documents exist
+    RAG_SMART = "smart"    # Use semantic similarity scoring (default)
+    RAG_EXPLICIT = "explicit"  # Only when user explicitly mentions files
+    
+    def __init__(self, rag_strategy: str = "smart"):
         self.router = QueryRouter()
+        self.rag_strategy = rag_strategy
         self.use_hybrid_search = True  # Enable hybrid search by default
-        self.max_context_tokens = 1500  # Maximum tokens for context
+        self.max_context_tokens = 1000  # Reduced to leave more room for conversation
     
     def retrieve_context(
         self, 
         query: str, 
         top_k: int = 5,
-        use_hybrid: bool = None
+        use_hybrid: bool = None,
+        filter_filename: str = None
     ) -> Dict:
         """
         Retrieve relevant context for a query with hybrid search.
@@ -91,6 +145,7 @@ class RetrievalService:
             query: User's query
             top_k: Number of chunks to retrieve
             use_hybrid: Override hybrid search setting
+            filter_filename: Optional filename to filter results to specific document
             
         Returns:
             Dict with 'context' (str), 'sources' (list), and 'used_rag' (bool)
@@ -98,8 +153,24 @@ class RetrievalService:
         # Start performance tracking
         perf_monitor.start_timer('rag_retrieval')
         
-        # Check if RAG should be used
-        if not self.router.should_use_rag(query):
+        # Check if RAG should be used based on strategy
+        should_use = False
+        
+        if self.rag_strategy == self.RAG_ALWAYS:
+            # Always use RAG if documents exist
+            try:
+                test = vector_store.search(query, limit=1)
+                should_use = len(test) > 0
+            except:
+                should_use = False
+        elif self.rag_strategy == self.RAG_EXPLICIT:
+            # Only explicit file references
+            should_use = self.router.always_rag_regex.search(query) is not None
+        else:  # RAG_SMART (default)
+            # Intelligent semantic similarity based routing
+            should_use = self.router.should_use_rag(query)
+        
+        if not should_use:
             perf_monitor.end_timer('rag_retrieval')
             return {
                 'context': '',
@@ -107,8 +178,12 @@ class RetrievalService:
                 'used_rag': False
             }
         
-        # Check for filename filter
-        filename = self.router.extract_filename_filter(query)
+        # Check for filename filter (from UI attachment or query parsing)
+        if filter_filename:
+            filename = filter_filename
+        else:
+            filename = self.router.extract_filename_filter(query)
+        
         filter_metadata = {'source': filename} if filename else None
         
         # Search vector store
@@ -238,6 +313,31 @@ class RetrievalService:
             context = ""
         
         return context, sources
+    
+    def set_rag_strategy(self, strategy: str):
+        """
+        Change RAG strategy on the fly.
+        
+        Args:
+            strategy: One of 'always', 'smart', 'explicit'
+        """
+        valid_strategies = [self.RAG_ALWAYS, self.RAG_SMART, self.RAG_EXPLICIT]
+        if strategy not in valid_strategies:
+            raise ValueError(f"Invalid strategy. Must be one of: {valid_strategies}")
+        self.rag_strategy = strategy
+        print(f"RAG strategy changed to: {strategy}")
+    
+    def set_relevance_threshold(self, threshold: float):
+        """
+        Adjust semantic similarity threshold for smart mode.
+        
+        Args:
+            threshold: Float between 0-1 (higher = more strict)
+        """
+        if not 0 <= threshold <= 1:
+            raise ValueError("Threshold must be between 0 and 1")
+        self.router.relevance_threshold = threshold
+        print(f"Relevance threshold set to: {threshold}")
 
 # Global instance
 retrieval_service = RetrievalService()

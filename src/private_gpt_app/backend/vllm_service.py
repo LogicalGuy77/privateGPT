@@ -16,7 +16,7 @@ class GenerationConfig:
     """Configuration for text generation."""
     temperature: float = 0.7
     top_p: float = 0.95
-    max_tokens: int = 2048
+    max_tokens: int = 1024  # Reduced to leave room for input + RAG context
     system_prompt: str = "You are a helpful, harmless, and honest AI assistant."
 
 
@@ -29,7 +29,7 @@ class VLLMService:
         dtype: str = "float16",
         quantization: str = "awq_marlin",  # Efficient AWQ with Marlin kernels
         gpu_memory_utilization: float = 0.55,  # Works on 4GB+ VRAM GPUs
-        max_model_len: int = 2048,  # Reduced context for 4GB compatibility
+        max_model_len: int = 4096,  # Increased for RAG context support
         max_num_seqs: int = 4,  # Limit concurrent sequences
         cpu_offload_gb: float = 0.0,  # CPU offload for extra headroom
         verbose: bool = False
