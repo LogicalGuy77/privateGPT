@@ -1,6 +1,6 @@
 """Chat widget for displaying messages with token streaming support."""
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
@@ -29,18 +29,28 @@ class ChatWidget(QWidget):
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setObjectName("chatScrollArea")
         
-        # Container for messages
+        # Content wrapper for messages (full width to allow left/right alignment)
+        self.content_wrapper = QWidget()
+        self.content_wrapper.setObjectName("chatContentWrapper")
+        
+        # Container for messages (full width, no centering)
         self.messages_container = QWidget()
         self.messages_container.setObjectName("messagesContainer")
         self.messages_layout = QVBoxLayout(self.messages_container)
-        self.messages_layout.setContentsMargins(30, 20, 30, 20)  # Increased side margins
-        self.messages_layout.setSpacing(12)  # Reduced spacing between messages
+        self.messages_layout.setContentsMargins(24, 20, 24, 20)
+        self.messages_layout.setSpacing(12)
         self.messages_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        # Use a simple vertical layout without centering constraints
+        wrapper_layout = QVBoxLayout(self.content_wrapper)
+        wrapper_layout.setContentsMargins(0, 0, 0, 0)
+        wrapper_layout.setSpacing(0)
+        wrapper_layout.addWidget(self.messages_container)
         
         # Welcome message
         self.add_welcome_message()
         
-        self.scroll_area.setWidget(self.messages_container)
+        self.scroll_area.setWidget(self.content_wrapper)
         layout.addWidget(self.scroll_area)
     
     def add_welcome_message(self):

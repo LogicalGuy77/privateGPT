@@ -54,11 +54,14 @@ class MainWindow(QMainWindow):
         # Check hardware if not in mock mode
         if not mock_mode:
             self.check_hardware()
-            self.check_recovery_data()
         
         self.setup_ui()
         self.setup_signals()
         self.start_vram_monitoring()
+
+        # Crash recovery needs the UI (chat widget) to be initialized.
+        if not mock_mode:
+            self.check_recovery_data()
     
     def setup_ui(self):
         """Initialize the user interface."""

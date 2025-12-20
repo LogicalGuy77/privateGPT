@@ -80,6 +80,21 @@ QPushButton:checked {
     color: #22c55e;
 }
 
+QPushButton#copyButton {
+    background-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #b0b0b0;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+QPushButton#copyButton:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #e0e0e0;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
 /* Line Edit / Text Input */
 QLineEdit {
     background-color: #1f1f1f;
