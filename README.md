@@ -130,7 +130,7 @@ When running in development mode, QSS stylesheets auto-reload on file changes.
 uv run python -m memory_profiler src/private_gpt_app/main.py
 ```
 
-## Phase 1 Status (Current)
+## Phase 1 Status (Completed)
 
 ✅ **Project Setup** - Complete
 - [x] uv project initialization
@@ -163,17 +163,49 @@ uv run python -m memory_profiler src/private_gpt_app/main.py
 - [x] Fixed duplicate code and import issues
 - [x] Optimized for low-end GPU compatibility
 
-⏳ **Next Steps (Phase 1 Remaining):**
-- [ ] Add settings panel (memory/context tuning UI)
-- [ ] Implement auto GPU detection with optimal settings
-- [ ] Add VRAM usage monitoring in UI
-- [ ] Implement crash recovery auto-save
+✅ **Additional Features** - Complete
+- [x] Settings panel (memory/context tuning UI)
+- [x] Auto GPU detection with optimal settings
+- [x] VRAM usage monitoring in UI
+- [x] Crash recovery auto-save
+
+## Phase 2 Status (Completed)
+
+✅ **Embeddings** - Complete
+- [x] sentence-transformers/all-MiniLM-L6-v2 on CPU
+- [x] LRU caching for repeated queries
+- [x] Zero VRAM usage (CPU-only)
+
+✅ **Vector Store** - Complete
+- [x] Qdrant local mode integration
+- [x] Persistent storage in `data/qdrant_db`
+- [x] Metadata filtering support
+- [x] Document deletion by filename
+
+✅ **Ingestion Pipeline** - Complete
+- [x] PyMuPDF for PDFs (fastest option)
+- [x] python-docx for Word documents
+- [x] Text splitter (512 chars, 50 overlap)
+- [x] Background processing with QThread
+- [x] Progress dialog UI
+
+✅ **Retrieval & Routing** - Complete
+- [x] Query router with keyword detection
+- [x] Automatic RAG triggering
+- [x] Filename filtering (e.g., "in report.pdf")
+- [x] Context injection into LLM
+- [x] Source citations in responses
+
+✅ **Knowledge Base UI** - Complete
+- [x] Document management dialog
+- [x] Add/delete files interface
+- [x] Document list with timestamps
 
 ## Roadmap
 
-- **Phase 1** (Current): Foundation & Basic Chat
-- **Phase 2**: RAG Pipeline with FAISS
-- **Phase 3**: Routing & Session Management
+- **Phase 1**: Foundation & Basic Chat (Completed ✅)
+- **Phase 2**: RAG Pipeline with Qdrant (Completed ✅)
+- **Phase 3**: Session Management & Advanced UI (Next)
 - **Phase 4**: Optimization & Packaging
 
 ## Configuration

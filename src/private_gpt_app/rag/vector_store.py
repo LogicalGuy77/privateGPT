@@ -69,9 +69,9 @@ class VectorStore:
             if conditions:
                 query_filter = models.Filter(must=conditions)
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=limit
         )
@@ -82,7 +82,7 @@ class VectorStore:
                 "metadata": {k: v for k, v in hit.payload.items() if k != "text"},
                 "score": hit.score
             }
-            for hit in results
+            for hit in results.points
         ]
     
     def clear(self):

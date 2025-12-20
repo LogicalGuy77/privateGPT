@@ -13,6 +13,7 @@ from private_gpt_app.ui.chat_widget import ChatWidget
 from private_gpt_app.ui.settings_dialog import SettingsDialog
 from private_gpt_app.ui.knowledge_base_dialog import KnowledgeBaseDialog
 from private_gpt_app.backend.vllm_service import VLLMService, GenerationConfig
+from private_gpt_app.backend.router import retrieval_service
 from private_gpt_app.utils.gpu_monitor import (
     detect_gpu, validate_hardware_requirements, print_gpu_info,
     recommend_settings, get_current_vram_usage
@@ -207,6 +208,12 @@ class MainWindow(QMainWindow):
         self.mode_label.setObjectName("modeLabel")
         button_row.addWidget(self.mode_label)
         
+        # RAG status indicator
+        self.rag_label = QLabel("")
+        self.rag_label.setObjectName("ragLabel")
+        self.rag_label.setStyleSheet("color: #00ff88; font-size: 11px;")
+        button_row.addWidget(self.rag_label)
+        
         button_row.addStretch()
         
         # Clear button
@@ -332,6 +339,17 @@ class MainWindow(QMainWindow):
         """Generate and display response."""
         self.send_btn.setEnabled(False)
         self.status_label.setText("⏳ Generating...")
+        self.rag_label.setText("")
+        
+        # Retrieve context if RAG should be used
+        retrieval_result = retrieval_service.retrieve_context(user_message)
+        context = retrieval_result['context']
+        sources = retrieval_result['sources']
+        used_rag = retrieval_result['used_rag']
+        
+        # Update RAG indicator
+        if used_rag and sources:
+            self.rag_label.setText(f"📚 Using: {', '.join(sources[:3])}")
         
         if self.mock_mode:
             # Simulate thinking time
@@ -379,10 +397,17 @@ class MainWindow(QMainWindow):
                     top_p=self.current_settings["top_p"]
                 )
                 
-                async for token in self.llm_service.generate_stream(self.conversation_history, config):
+                # Pass context to LLM if RAG is used
+                async for token in self.llm_service.generate_stream(self.conversation_history, config, context=context):
                     self.chat_widget.append_to_current_message(token)
                     full_response += token
                     await asyncio.sleep(0)  # Allow UI updates
+                
+                # Add sources citation if RAG was used
+                if used_rag and sources:
+                    citation = f"\n\n---\n*Sources: {', '.join(sources)}*"
+                    self.chat_widget.append_to_current_message(citation)
+                    full_response += citation
                 
                 self.chat_widget.finish_current_message()
                 
