@@ -29,9 +29,10 @@ from private_gpt_app.utils.performance import perf_monitor
 class MainWindow(QMainWindow):
     """Main application window with chat interface."""
     
-    def __init__(self, mock_mode: bool = False):
+    def __init__(self, mock_mode: bool = False, model_path: str = None):
         super().__init__()
         self.mock_mode = mock_mode
+        self.model_path = model_path or "Qwen/Qwen2.5-3B-Instruct-AWQ"
         self.llm_service = None
         self.conversation_history = []
         self.gpu_info = None
@@ -387,8 +388,8 @@ class MainWindow(QMainWindow):
                 model_path = str(models_dir)
                 print(f"📁 Loading model from local folder: {model_path}")
             else:
-                model_path = "Qwen/Qwen2.5-3B-Instruct-AWQ"
-                print(f"☁️ Loading model from HuggingFace: {model_path}")
+                model_path = self.model_path
+                print(f"📦 Loading model: {model_path}")
             
             self.llm_service = VLLMService(
                 model_name=model_path,

@@ -5,11 +5,12 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
 import qasync
 
 from private_gpt_app.ui.main_window import MainWindow
+from private_gpt_app.utils.setup_manager import check_first_time_setup, FirstTimeSetupDialog, get_model_path
 
 
 def setup_app() -> QApplication:
@@ -77,11 +78,19 @@ async def main_async(mock_mode: bool = False, dev_mode: bool = False) -> None:
     """Async main function for the application."""
     app = qasync.QApplication.instance()
     
+    # With bundled model, setup is automatic - just show info on first run
+    if not mock_mode and not check_first_time_setup():
+        # Show info about bundled model (non-blocking)
+        FirstTimeSetupDialog.show_info()
+    
     # Load stylesheet
     load_stylesheet(app, dev_mode=dev_mode)
     
+    # Get model path (bundled or default)
+    model_path = get_model_path() if not mock_mode else None
+    
     # Create and show main window
-    window = MainWindow(mock_mode=mock_mode)
+    window = MainWindow(mock_mode=mock_mode, model_path=model_path)
     window.show()
     
     # Wait for window to close
