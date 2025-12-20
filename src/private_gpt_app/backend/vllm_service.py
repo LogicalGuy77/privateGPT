@@ -146,32 +146,31 @@ class VLLMService:
         
         from vllm import SamplingParams
         
-        # Get the last user message
-        user_message = messages[-1]['content'] if messages else ""
-        
-        # Construct prompt with context if provided
+        # Ensure system prompt exists and clone to avoid mutating caller state.
+        chat_messages = self._ensure_system_prompt(list(messages), config.system_prompt)
+
+        # Inject RAG context into the most recent user message.
         if context:
-            full_prompt = f"""Use the following context to answer the user's question. If the answer is not in the context, say so.
+            last_user_idx = None
+            for i in range(len(chat_messages) - 1, -1, -1):
+                if chat_messages[i].get("role") == "user":
+                    last_user_idx = i
+                    break
+            if last_user_idx is None:
+                # No user message found; append one.
+                chat_messages.append({"role": "user", "content": ""})
+                last_user_idx = len(chat_messages) - 1
 
-Context:
-{context}
-
-Question:
-{user_message}"""
-        else:
-            full_prompt = user_message
-        
-        # Build messages with system prompt and history
-        chat_messages = [
-            {"role": "system", "content": config.system_prompt}
-        ]
-        
-        # Add conversation history (excluding the last message as we'll add it with context)
-        for msg in messages[:-1]:
-            chat_messages.append(msg)
-        
-        # Add the final user message (with context if RAG is used)
-        chat_messages.append({"role": "user", "content": full_prompt})
+            user_text = chat_messages[last_user_idx].get("content", "")
+            chat_messages[last_user_idx] = {
+                "role": "user",
+                "content": (
+                    "Use the following context to answer the user's question. "
+                    "If the answer is not in the context, say so.\n\n"
+                    f"Context:\n{context}\n\n"
+                    f"Question:\n{user_text}"
+                ),
+            }
         
         # Use tokenizer to apply chat template
         tokenizer = self._llm.get_tokenizer()
@@ -317,8 +316,15 @@ Question:
             
             # vLLM cleanup
             if self._llm is not None:
-                # Force cleanup of CUDA resources
-                del self._llm
+                try:
+                    # Properly shutdown vLLM engine
+                    if hasattr(self._llm, 'shutdown'):
+                        self._llm.shutdown()
+                    
+                    # Force cleanup of CUDA resources
+                    del self._llm
+                except Exception as e:
+                    print(f"⚠️ Error during vLLM cleanup: {e}")
             
             self._llm = None
             self._is_loaded = False
@@ -332,7 +338,16 @@ Question:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
-            except:
-                pass
+                    # Force finalize CUDA context
+                    torch.cuda.ipc_collect()
+            except Exception as e:
+                print(f"⚠️ Error clearing CUDA cache: {e}")
             
             print("✓ vLLM model unloaded")
+    
+    def __del__(self):
+        """Cleanup on object destruction."""
+        try:
+            self.unload_model()
+        except:
+            pass

@@ -109,8 +109,14 @@ QTextBrowser {
     background-color: #0f0f0f;
     color: #e0e0e0;
     border: none;
-    padding: 20px;
+    padding: 0px;
     selection-background-color: rgba(59, 130, 246, 0.3);
+}
+
+QTextBrowser#messageText {
+    background-color: transparent;
+    color: #e0e0e0;
+    padding: 0px;
 }
 
 /* Message Input */
@@ -324,13 +330,4 @@ QMenu::separator {
     margin: 4px 8px;
 }
 
-/* Responsive Adjustments */
-@media (max-width: 1200px) {
-    * {
-        font-size: 13px;
-    }
-    
-    QPushButton {
-        padding: 8px 14px;
-    }
-}
+/* Note: Qt Style Sheets do not support CSS media queries (@media). */

@@ -675,8 +675,21 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close event."""
+        print("🛑 Shutting down Private-GPT...")
+        
+        # Unload LLM to free GPU memory
+        if self.llm_service and self.llm_service.is_loaded:
+            print("🔄 Cleaning up vLLM resources...")
+            self.llm_service.unload_model()
+        
         # Clean up recovery data on clean exit
         self.crash_recovery.end_session()
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        
+        print("✓ Shutdown complete")
         event.accept()
     
     def open_knowledge_base(self):
