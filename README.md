@@ -1,28 +1,28 @@
 # Private-GPT Desktop App
 
-A local, privacy-focused desktop chat application with RAG (Retrieval-Augmented Generation) capabilities, powered by NVIDIA Nemotron-Nano-9B-v2.
+A local, privacy-focused desktop chat application powered by Qwen2.5-3B-Instruct-AWQ with vLLM acceleration.
 
 ## Features
 
 - 🔒 **100% Local & Private** - All data stays on your machine
-- 💬 **Chat Interface** - Modern PyQt6-based UI with token streaming
-- 🚀 **Powered by vLLM** - Optimized inference with 50% less VRAM
-- 🧠 **Reasoning Modes** - `/think` for step-by-step reasoning, `/no_think` for fast responses
-- 📚 **RAG Pipeline** (Coming soon) - Upload documents and ask questions
-- 💾 **Session Management** (Coming soon) - Persistent chat history
-- ⚡ **Fast & Lightweight** - Native widgets, optimized CUDA kernels
+- 💬 **Chat Interface** - Modern PyQt6-based UI with real-time token streaming
+- 🚀 **Powered by vLLM** - AWQ Marlin quantization for maximum efficiency
+- 🎯 **Low VRAM Optimized** - Runs on 4GB+ VRAM GPUs
+- 📜 **2K Context Window** - Balanced performance for low-end hardware
+- ⚡ **Fast Generation** - 66-378 tokens/sec on RTX 5060 Laptop
+- 🤖 **Apache 2.0 Licensed Model** - Commercial use ready
 
 ## Prerequisites
 
 - **Hardware:**
-  - NVIDIA GPU with 6GB+ VRAM (RTX 3060, 4060, 5060 or better)
+  - NVIDIA GPU with 4GB+ VRAM (GTX 1650, RTX 3050, RTX 4060, RTX 5060, etc.)
   - CUDA-capable drivers (vLLM bundles CUDA runtime)
   - 8GB+ system RAM
-  - 10GB disk space
+  - 5GB disk space for model
 
 - **Software:**
   - Python 3.10+
-  - Linux (tested on Ubuntu 22.04+) or Windows 10/11
+  - Linux (tested on Ubuntu 22.04+)
   - NVIDIA drivers 525+ (for CUDA 12 support)
 
 ## Quick Start
@@ -42,62 +42,68 @@ uv sync
 ### 2. Run the Application
 
 ```bash
-# Mock mode (no model - for UI testing)
-uv run python run.py --mock --dev
+# Run the application
+uv run python run.py --dev
 
-# Real mode (auto-downloads model from HuggingFace)
+# Or without dev mode
 uv run python run.py
 ```
 
 ### 3. First Run
 
 On first launch, the app will:
-1. Check your GPU (6GB VRAM minimum)
-2. Auto-download Nemotron Nano 9B v2 from HuggingFace (~4.5GB)
-3. Load model with vLLM (takes ~30 seconds)
+1. Check your GPU (4GB VRAM minimum)
+2. Auto-download Qwen2.5-3B-Instruct-AWQ from HuggingFace (~2.7GB)
+3. Load model with vLLM using AWQ Marlin kernels
 4. Ready to chat!
 
-**Model Download:**
-- Automatically cached in `~/.cache/huggingface/hub/`
-- Only downloads once
-- Takes 5-10 minutes depending on internet speed
+**Model Info:**
+- Model: Qwen/Qwen2.5-3B-Instruct-AWQ (Apache 2.0 license)
+- Size: 2.7GB download, 1.93GB loaded
+- Context: 2048 tokens (~1500 words)
+- VRAM Usage: ~3.1GB total (model + KV cache)
+- Automatically cached in `models/Qwen2.5-3B-Instruct-AWQ/`
 
 ## Usage
 
-### Reasoning Modes
+### Chat Interface
 
-Nemotron Nano 9B v2 supports controllable reasoning:
-
-- **`/no_think`** (default): Fast, direct answers
-- **`/think`**: Shows step-by-step reasoning traces
-
-Currently set in code (`main_window.py`), UI toggle coming in Phase 2.
+The app provides a clean chat interface with:
+- Real-time token streaming
+- Message bubbles with user/assistant distinction
+- Auto-scrolling to latest messages
+- Responsive PyQt6 design
 
 ### Performance Tuning
 
-Edit `src/private_gpt_app/ui/main_window.py` to adjust:
+Edit `src/private_gpt_app/ui/main_window.py` to adjust VRAM/context trade-offs:
 
 ```python
 VLLMService(
-    gpu_memory_utilization=0.90,  # Use 90% of VRAM (adjust to 0.85 if needed)
-    max_model_len=8192,            # Context window (reduce to 4096 for lower VRAM)
+    gpu_memory_utilization=0.55,  # 4GB VRAM: 0.55 | 6GB: 0.65 | 8GB+: 0.70
+    max_model_len=2048,            # 4GB VRAM: 2048 | 6GB: 3072 | 8GB+: 4096
+    cpu_offload_gb=2.0,            # Offload 2GB to system RAM for headroom
 )
 ```
+
+**GPU Compatibility Matrix:**
+- **4GB VRAM** (GTX 1650, RTX 3050 4GB): 0.55 utilization, 2K context
+- **6GB VRAM** (RTX 3060 Mobile, RTX 2060): 0.65 utilization, 3K context
+- **8GB+ VRAM** (RTX 3070, RTX 4060, RTX 5060): 0.70 utilization, 4K context
 
 ## Project Structure
 
 ```
 private-gpt-app/
 ├── src/private_gpt_app/
-│   ├── ui/              # PyQt6 interface components
-│   ├── backend/         # LLM service and session manager
-│   ├── rag/             # Vector store and embeddings
-│   └── utils/           # GPU monitoring, crash recovery
+│   ├── ui/              # PyQt6 interface (main_window, chat_widget, message_bubble)
+│   ├── backend/         # vLLM service with AWQ quantization
+│   └── utils/           # GPU monitoring
 ├── data/
-│   ├── faiss_index/     # Local vector database
-│   ├── crash_recovery/  # Auto-save temp files
-│   └── sessions.db      # Chat history (SQLite)
-├── models/              # Downloaded GGUF models
+│   ├── faiss_index/     # (Future) Local vector database
+│   └── crash_recovery/  # (Future) Auto-save temp files
+├── models/
+│   └── Qwen2.5-3B-Instruct-AWQ/  # Downloaded model files
 └── docs/                # Documentation
 ```
 
@@ -139,20 +145,27 @@ uv run python -m memory_profiler src/private_gpt_app/main.py
 - [x] qasync event loop integration
 - [x] Token streaming UI with progressive rendering
 - [x] Premium Black theme (QSS stylesheet)
-- [x] Hot-reload for QSS in dev mode
 - [x] Message bubbles with Markdown support
 
-✅ **llama.cpp Integration** - Complete
-- [x] LlamaCppService with lazy loading
+✅ **vLLM Integration** - Complete
+- [x] VLLMService with lazy loading
 - [x] GPU detection and VRAM validation
-- [x] Model downloader utility
-- [x] Token streaming from llama.cpp
-- [x] Conversation history management
+- [x] Qwen2.5-3B-Instruct-AWQ model (Apache 2.0)
+- [x] AWQ Marlin quantization for efficiency
+- [x] Token streaming from vLLM
+- [x] ChatML conversation format
 - [x] Error handling and graceful degradation
+- [x] 4GB VRAM optimization (0.55 utilization, 2K context)
+
+✅ **Codebase Cleanup** - Complete
+- [x] Removed unused backend services (llama.cpp, transformers)
+- [x] Removed unused model files (7B model, GGUF files)
+- [x] Fixed duplicate code and import issues
+- [x] Optimized for low-end GPU compatibility
 
 ⏳ **Next Steps (Phase 1 Remaining):**
-- [ ] Add settings panel (context window, temperature, etc.)
-- [ ] Implement reasoning mode toggle (/think vs /no_think)
+- [ ] Add settings panel (memory/context tuning UI)
+- [ ] Implement auto GPU detection with optimal settings
 - [ ] Add VRAM usage monitoring in UI
 - [ ] Implement crash recovery auto-save
 
@@ -167,34 +180,60 @@ uv run python -m memory_profiler src/private_gpt_app/main.py
 
 ### VRAM Optimization
 
-Edit `~/.private-gpt/config.json`:
+The app is currently configured for maximum compatibility (4GB+ VRAM).
 
-```json
-{
-  "context_window": 8192,  // Default: 8k, max: 32k
-  "n_gpu_layers": -1,      // -1 = all layers on GPU
-  "reasoning_mode": true   // Enable /think mode
-}
+To adjust for your specific GPU, edit `src/private_gpt_app/ui/main_window.py`:
+
+```python
+# 4GB VRAM (current default)
+gpu_memory_utilization=0.55
+max_model_len=2048
+
+# 6GB VRAM (recommended for better context)
+gpu_memory_utilization=0.65
+max_model_len=3072
+
+# 8GB+ VRAM (optimal performance)
+gpu_memory_utilization=0.70
+max_model_len=4096
 ```
+
+**Trade-offs:**
+- Lower utilization = more stable, less risk of OOM
+- Higher context = better conversation memory, more VRAM usage
 
 ## Troubleshooting
 
 ### Low VRAM Error
 
-If you see "Low VRAM detected", the app will:
-1. Reduce context window to 4k
-2. Offload some layers to CPU
-3. Suggest closing other GPU applications
+If you see OOM (Out of Memory) errors:
+
+1. Reduce `gpu_memory_utilization` from 0.55 to 0.50
+2. Reduce `max_model_len` from 2048 to 1536
+3. Increase `cpu_offload_gb` from 2.0 to 3.0
+4. Close other GPU applications (Chrome, games, etc.)
+
+Check current GPU usage:
+```bash
+nvidia-smi
+```
 
 ### Model Download Failed
 
-The app uses resumable downloads. If interrupted:
-1. Restart the app
-2. Download will resume from where it stopped
+Model auto-downloads from HuggingFace on first run. If interrupted:
+1. Delete `models/Qwen2.5-3B-Instruct-AWQ/`
+2. Restart the app - download will resume
+
+### Lingering Processes
+
+If the app crashes and GPU is still occupied:
+```bash
+pkill -9 -f "python.*run.py"
+```
 
 ### UI Freezing
 
-Ensure you're not running in mock mode and qasync is properly initialized.
+Ensure qasync is properly initialized. Check terminal output for vLLM errors.
 
 ## License
 
@@ -202,6 +241,7 @@ MIT License - See LICENSE file for details
 
 ## Acknowledgments
 
-- NVIDIA Nemotron team for the amazing model
-- llama.cpp community for the inference engine
+- Qwen team for the efficient 3B Instruct model
+- vLLM team for the high-performance inference engine
+- AWQ team for the quantization method
 - PyQt6 for the cross-platform UI framework

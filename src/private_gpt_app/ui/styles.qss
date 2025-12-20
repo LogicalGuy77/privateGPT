@@ -62,6 +62,31 @@ QMainWindow {
     color: #FFFFFF;
 }
 
+#settingsButton {
+    background-color: #2A2A2A;
+    color: #FFFFFF;
+    border: 1px solid #3A3A3A;
+    border-radius: 8px;
+    padding: 10px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+#settingsButton:hover {
+    background-color: #3A3A3A;
+    border-color: #4A4A4A;
+}
+
+#settingsButton:pressed {
+    background-color: #252525;
+}
+
+#vramLabel {
+    color: #4CAF50;
+    padding: 5px;
+    font-size: 11px;
+}
+
 #statusLabel {
     color: #888888;
     padding: 10px;
@@ -229,3 +254,65 @@ QSplitter::handle {
 QSplitter::handle:hover {
     background-color: #3A3A3A;
 }
+
+/* Settings Dialog */
+QDialog {
+    background-color: #0A0A0A;
+}
+
+QGroupBox {
+    color: #FFFFFF;
+    border: 1px solid #2A2A2A;
+    border-radius: 8px;
+    margin-top: 10px;
+    padding-top: 15px;
+    font-weight: bold;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 5px 10px;
+    color: #FFFFFF;
+}
+
+QSlider::groove:horizontal {
+    background-color: #2A2A2A;
+    height: 6px;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background-color: #2563EB;
+    width: 16px;
+    height: 16px;
+    margin: -5px 0;
+    border-radius: 8px;
+}
+
+QSlider::handle:horizontal:hover {
+    background-color: #1D4ED8;
+}
+
+QComboBox {
+    background-color: #1A1A1A;
+    color: #FFFFFF;
+    border: 1px solid #2A2A2A;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+QComboBox:hover {
+    border-color: #3A3A3A;
+}
+
+QComboBox::drop-down {
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #1A1A1A;
+    color: #FFFFFF;
+    selection-background-color: #2563EB;
+}
+
