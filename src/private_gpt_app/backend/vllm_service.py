@@ -1,14 +1,12 @@
-"""LLM service using vLLM for Nemotron Nano 9B v2 - optimized for 8GB VRAM + 32GB RAM."""
+"""LLM service using vLLM for Qwen2.5 - optimized for 8GB VRAM."""
 
 import asyncio
 import os
 from typing import Optional, AsyncIterator, Callable
 from dataclasses import dataclass
 
-# CRITICAL: Set memory optimizations BEFORE importing vLLM
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,garbage_collection_threshold:0.6"
-# Force V0 engine which has different memory handling
-os.environ["VLLM_USE_V1"] = "0"
+# Memory optimizations
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 
 @dataclass
@@ -17,38 +15,34 @@ class GenerationConfig:
     temperature: float = 0.7
     top_p: float = 0.95
     max_tokens: int = 2048
-    reasoning_mode: str = "/no_think"  # "/think" or "/no_think"
-    
-    def __post_init__(self):
-        if self.reasoning_mode not in ["/think", "/no_think"]:
-            self.reasoning_mode = "/no_think"
+    system_prompt: str = "You are a helpful, harmless, and honest AI assistant."
 
 
 class VLLMService:
-    """Service for LLM inference using vLLM - optimized for low VRAM with CPU offloading."""
+    """Service for LLM inference using vLLM - optimized for 8GB VRAM GPUs."""
     
     def __init__(
         self,
-        model_name: str = "RedHatAI/NVIDIA-Nemotron-Nano-9B-v2-quantized.w4a16",
+        model_name: str = "Qwen/Qwen2.5-3B-Instruct-AWQ",
         dtype: str = "float16",
-        quantization: Optional[str] = None,
-        gpu_memory_utilization: float = 0.85,  # Use 85% of VRAM for model
-        max_model_len: int = 2048,  # Context length
-        kv_cache_dtype: str = "fp8",  # 8-bit KV cache saves ~50% cache memory
-        cpu_offload_gb: float = 8.0,  # Offload 8GB to CPU RAM
+        quantization: str = "awq_marlin",  # Efficient AWQ with Marlin kernels
+        gpu_memory_utilization: float = 0.55,  # Works on 4GB+ VRAM GPUs
+        max_model_len: int = 2048,  # Reduced context for 4GB compatibility
+        max_num_seqs: int = 4,  # Limit concurrent sequences
+        cpu_offload_gb: float = 0.0,  # CPU offload for extra headroom
         verbose: bool = False
     ):
         """
-        Initialize vLLM service for Nemotron Nano 9B v2.
+        Initialize vLLM service for Qwen2.5-Instruct-AWQ.
         
         Args:
-            model_name: HuggingFace model ID
-            dtype: Data type ("bfloat16", "float16", "auto")
-            quantization: Quantization method ("awq", "gptq", "squeezellm", None)
+            model_name: HuggingFace model ID or local path
+            dtype: Data type ("float16" for AWQ)
+            quantization: Quantization method ("awq_marlin" for efficiency)
             gpu_memory_utilization: Fraction of GPU memory to use
             max_model_len: Maximum context length
-            kv_cache_dtype: Key/Value cache data type ("fp8" saves memory)
-            cpu_offload_gb: Amount of model to offload to CPU RAM (GB)
+            max_num_seqs: Maximum concurrent sequences
+            cpu_offload_gb: Amount of memory to offload to CPU (GB)
             verbose: Enable verbose logging
         """
         self.model_name = model_name
@@ -56,7 +50,7 @@ class VLLMService:
         self.quantization = quantization
         self.gpu_memory_utilization = gpu_memory_utilization
         self.max_model_len = max_model_len
-        self.kv_cache_dtype = kv_cache_dtype
+        self.max_num_seqs = max_num_seqs
         self.cpu_offload_gb = cpu_offload_gb
         self.verbose = verbose
         
@@ -81,14 +75,14 @@ class VLLMService:
                 return
             
             if progress_callback:
-                progress_callback(f"🔄 Loading {self.model_name} with vLLM...")
+                progress_callback(f"🔄 Loading {self.model_name}...")
             
-            print(f"📦 Loading Nemotron Nano 9B v2 with vLLM (V0 Engine)")
+            print(f"📦 Loading Qwen2.5 with vLLM")
             print(f"⚙️  GPU Memory Utilization: {self.gpu_memory_utilization * 100}%")
             print(f"📏 Max Context Length: {self.max_model_len}")
-            print(f"🎮 Data Type: {self.dtype}")
-            print(f"🧠 KV Cache Type: {self.kv_cache_dtype}")
-            print(f"💾 CPU Offload: {self.cpu_offload_gb}GB to RAM")
+            print(f"🎮 Quantization: {self.quantization}")
+            if self.cpu_offload_gb > 0:
+                print(f"💾 CPU Offload: {self.cpu_offload_gb}GB")
             
             try:
                 from vllm import LLM
@@ -97,26 +91,24 @@ class VLLMService:
                 loop = asyncio.get_event_loop()
                 
                 def _load():
-                    return LLM(
-                        model=self.model_name,
-                        trust_remote_code=True,
-                        dtype=self.dtype,
-                        quantization=self.quantization,
-                        gpu_memory_utilization=self.gpu_memory_utilization,
-                        max_model_len=self.max_model_len,
-                        kv_cache_dtype=self.kv_cache_dtype,
-                        enforce_eager=True,  # Disable CUDA graphs to save VRAM
-                        cpu_offload_gb=self.cpu_offload_gb,  # Offload to CPU RAM
-                        swap_space=16,  # 16GB swap space for KV cache overflow
-                        max_num_seqs=1,  # CRITICAL: Only 1 sequence at a time (reduces Mamba cache)
-                        disable_custom_all_reduce=True,  # Save memory
-                    )
+                    kwargs = {
+                        "model": self.model_name,
+                        "dtype": self.dtype,
+                        "quantization": self.quantization,
+                        "gpu_memory_utilization": self.gpu_memory_utilization,
+                        "max_model_len": self.max_model_len,
+                        "max_num_seqs": self.max_num_seqs,
+                        "enforce_eager": True,  # Disable CUDA graphs for stability
+                    }
+                    # Add CPU offload if specified
+                    if self.cpu_offload_gb > 0:
+                        kwargs["cpu_offload_gb"] = self.cpu_offload_gb
+                    return LLM(**kwargs)
                 
                 self._llm = await loop.run_in_executor(None, _load)
                 
                 self._is_loaded = True
-                print("✅ vLLM model loaded successfully!")
-                print(f"💾 Using CPU offloading: {self.cpu_offload_gb}GB offloaded to RAM")
+                print("✅ Qwen2.5 model loaded successfully!")
                 
                 if progress_callback:
                     progress_callback("✅ Model ready!")
@@ -150,13 +142,13 @@ class VLLMService:
         if config is None:
             config = GenerationConfig()
         
-        print(f"\n🤖 Generating response (max {config.max_tokens} tokens, {config.reasoning_mode})...")
+        print(f"\n🤖 Generating response (max {config.max_tokens} tokens)...")
         
         try:
             from vllm import SamplingParams
             
-            # Add reasoning mode to messages
-            enhanced_messages = self._add_reasoning_mode(messages, config.reasoning_mode)
+            # Add system prompt if not present
+            enhanced_messages = self._ensure_system_prompt(messages, config.system_prompt)
             
             # Format messages into prompt using chat template
             prompt = self._format_chat_messages(enhanced_messages)
@@ -214,8 +206,8 @@ class VLLMService:
         try:
             from vllm import SamplingParams
             
-            # Add reasoning mode
-            enhanced_messages = self._add_reasoning_mode(messages, config.reasoning_mode)
+            # Add system prompt if not present
+            enhanced_messages = self._ensure_system_prompt(messages, config.system_prompt)
             prompt = self._format_chat_messages(enhanced_messages)
             
             # Sampling parameters
@@ -238,39 +230,32 @@ class VLLMService:
             print(f"❌ Generation error: {e}")
             raise
     
-    def _add_reasoning_mode(self, messages: list[dict], reasoning_mode: str) -> list[dict]:
+    def _ensure_system_prompt(self, messages: list[dict], system_prompt: str) -> list[dict]:
         """
-        Add reasoning mode to messages.
+        Ensure messages have a system prompt.
         
         Args:
             messages: Original chat messages
-            reasoning_mode: "/think" or "/no_think"
+            system_prompt: Default system prompt to add if none exists
         
         Returns:
-            Enhanced messages with reasoning mode
+            Messages with system prompt
         """
         if not messages:
-            return messages
+            return [{'role': 'system', 'content': system_prompt}]
         
         # Clone messages
         enhanced = messages.copy()
         
         # Check if first message is system message
-        if enhanced and enhanced[0].get('role') == 'system':
-            # Append to existing system message
-            enhanced[0] = {
-                'role': 'system',
-                'content': f"{enhanced[0]['content']} {reasoning_mode}".strip()
-            }
-        else:
-            # Insert new system message
-            enhanced.insert(0, {'role': 'system', 'content': reasoning_mode})
+        if enhanced[0].get('role') != 'system':
+            enhanced.insert(0, {'role': 'system', 'content': system_prompt})
         
         return enhanced
     
     def _format_chat_messages(self, messages: list[dict]) -> str:
         """
-        Format messages into Nemotron chat template format.
+        Format messages into Qwen2.5 ChatML format.
         
         Args:
             messages: Chat messages
@@ -278,22 +263,16 @@ class VLLMService:
         Returns:
             Formatted prompt string
         """
-        # Nemotron uses a simple chat format
+        # Qwen2.5 uses ChatML format
         prompt_parts = []
         
         for msg in messages:
             role = msg.get('role', 'user')
             content = msg.get('content', '')
-            
-            if role == 'system':
-                prompt_parts.append(f"<extra_id_0>System\n{content}\n")
-            elif role == 'user':
-                prompt_parts.append(f"<extra_id_1>User\n{content}\n")
-            elif role == 'assistant':
-                prompt_parts.append(f"<extra_id_1>Assistant\n{content}\n")
+            prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>\n")
         
-        # Add assistant prompt
-        prompt_parts.append("<extra_id_1>Assistant\n")
+        # Add assistant prompt for generation
+        prompt_parts.append("<|im_start|>assistant\n")
         
         return "".join(prompt_parts)
     

@@ -1,7 +1,7 @@
 [project]
 name = "private-gpt-app"
 version = "0.1.0"
-description = "A local, privacy-focused desktop chat application with RAG capabilities powered by NVIDIA Nemotron"
+description = "A local, privacy-focused desktop chat application with RAG capabilities powered by Qwen2.5"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

@@ -6,13 +6,12 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QPushButton, QLabel, QSplitter, QListWidget, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QFont
 
 from private_gpt_app.ui.chat_widget import ChatWidget
 from private_gpt_app.backend.vllm_service import VLLMService, GenerationConfig
 from private_gpt_app.utils.gpu_monitor import detect_gpu, validate_hardware_requirements, print_gpu_info
-from private_gpt_app.utils.model_downloader import ModelDownloader
 
 
 class MainWindow(QMainWindow):
@@ -21,17 +20,13 @@ class MainWindow(QMainWindow):
     def __init__(self, mock_mode: bool = False):
         super().__init__()
         self.mock_mode = mock_mode
-        self.llm_service = None  # Will be TransformersService with auto device_map
-        self.model_downloader = ModelDownloader()
+        self.llm_service = None
         self.conversation_history = []
         
         # Check hardware if not in mock mode
         if not mock_mode:
             self.check_hardware()
         
-        self.setup_ui()
-        self.setup_signals()
-        self.mock_mode = mock_mode
         self.setup_ui()
         self.setup_signals()
     
@@ -216,37 +211,47 @@ class MainWindow(QMainWindow):
             print(message)
     
     async def initialize_llm(self):
-        """Initialize the LLM service with Nemotron Nano 9B v2."""
+        """Initialize the LLM service with Qwen2.5-3B-Instruct-AWQ."""
         if self.llm_service and self.llm_service.is_loaded:
             return
         
         # Show loading status
-        self.status_label.setText("🔄 Loading Nemotron Nano 9B v2...")
+        self.status_label.setText("🔄 Loading Qwen2.5-3B...")
         self.send_btn.setEnabled(False)
         
         try:
-            # Initialize VLLMService with Nemotron Nano 9B v2
+            # Initialize VLLMService with Qwen2.5-3B-Instruct-AWQ
+            # Apache 2.0 license - fully commercial, AWQ 4-bit quantized (~2.7GB)
+            models_dir = Path(__file__).parent.parent.parent.parent / "models" / "Qwen2.5-3B-Instruct-AWQ"
+            if models_dir.exists():
+                model_path = str(models_dir)
+                print(f"📁 Loading model from local folder: {model_path}")
+            else:
+                model_path = "Qwen/Qwen2.5-3B-Instruct-AWQ"
+                print(f"☁️ Loading model from HuggingFace: {model_path}")
+            
             self.llm_service = VLLMService(
-                model_name="nvidia/NVIDIA-Nemotron-Nano-9B-v2",
-                gpu_memory_utilization=0.85,
-                max_model_len=4096,
+                model_name=model_path,
+                quantization="awq_marlin",
+                gpu_memory_utilization=0.55,  # Works on 4GB GPUs
+                max_model_len=2048,  # 2K context for 4GB compatibility
+                cpu_offload_gb=2.0,
                 verbose=False
             )
             
-            # Load model (will auto-download from HuggingFace if not cached)
             await self.llm_service.load_model(
                 progress_callback=lambda msg: self.status_label.setText(msg)
             )
             
             self.status_label.setText("✅ Model ready")
             self.send_btn.setEnabled(True)
-            self.mode_label.setText("🤖 LLM Loaded")
+            self.mode_label.setText("🤖 Qwen2.5-3B")
         
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "Model Load Failed",
-                f"Failed to load Nemotron Nano 9B v2 with vLLM:\n\n{str(e)}\n\n"
+                f"Failed to load Qwen2.5-3B-Instruct-AWQ:\n\n{str(e)}\n\n"
                 "Make sure you have:\n"
                 "• CUDA-capable GPU with 6GB+ VRAM\n"
                 "• Python packages: vllm, torch\n\n"
@@ -320,8 +325,7 @@ class MainWindow(QMainWindow):
                 config = GenerationConfig(
                     temperature=0.7,
                     max_tokens=2048,
-                    top_p=0.95,
-                    reasoning_mode="/no_think"  # Toggle to "/think" for reasoning traces
+                    top_p=0.95
                 )
                 
                 async for token in self.llm_service.generate_stream(self.conversation_history, config):
