@@ -170,10 +170,12 @@ class VLLMService:
             chat_messages[last_user_idx] = {
                 "role": "user",
                 "content": (
-                    "Use the following context to answer the user's question. "
-                    "If the answer is not in the context, say so.\n\n"
-                    f"Context:\n{context}\n\n"
-                    f"Question:\n{user_text}"
+                    f"{user_text}\n\n"
+                    "Additional context from knowledge base:\n"
+                    f"{context}\n\n"
+                    "Use the above context if relevant to the question. "
+                    "If the question is about you (the assistant), answer from your system knowledge. "
+                    "If the context doesn't contain the answer, use your general knowledge or state you don't know."
                 ),
             }
         
