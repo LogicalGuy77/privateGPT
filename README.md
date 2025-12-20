@@ -30,7 +30,7 @@ A local, privacy-focused desktop chat application powered by Qwen2.5-3B-Instruct
 ### 1. Install Dependencies
 
 ```bash
-cd /home/harshit/coding/private-gpt/private-gpt-app
+cd /private-gpt-app
 
 # Install vLLM and dependencies
 uv pip install vllm
