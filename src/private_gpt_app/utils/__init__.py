@@ -1,1 +1,1 @@
-"""Utility modules for GPU monitoring, crash recovery, and model downloading."""
+"""Utility modules for GPU monitoring."""
