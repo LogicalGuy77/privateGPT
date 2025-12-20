@@ -122,6 +122,13 @@ def main() -> None:
     
     print()
     
+    # Clean up any stale processes from previous crashes
+    from private_gpt_app.utils.gpu_cleanup import kill_stale_vllm_processes, cleanup_gpu_memory
+    if kill_stale_vllm_processes():
+        import time
+        time.sleep(1)  # Wait for processes to die
+        cleanup_gpu_memory()
+    
     try:
         # Create qasync event loop
         app = QApplication(sys.argv)
@@ -133,6 +140,9 @@ def main() -> None:
     
     except KeyboardInterrupt:
         print("\n👋 Shutting down...")
+        # Ensure cleanup on Ctrl+C
+        from private_gpt_app.utils.gpu_cleanup import cleanup_gpu_memory
+        cleanup_gpu_memory()
     except Exception as e:
         print(f"❌ Fatal error: {e}")
         import traceback

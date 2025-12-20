@@ -33,8 +33,8 @@ class ChatWidget(QWidget):
         self.messages_container = QWidget()
         self.messages_container.setObjectName("messagesContainer")
         self.messages_layout = QVBoxLayout(self.messages_container)
-        self.messages_layout.setContentsMargins(20, 20, 20, 20)
-        self.messages_layout.setSpacing(15)
+        self.messages_layout.setContentsMargins(30, 20, 30, 20)  # Increased side margins
+        self.messages_layout.setSpacing(12)  # Reduced spacing between messages
         self.messages_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # Welcome message
