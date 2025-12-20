@@ -123,64 +123,75 @@ class VLLMService:
     
     async def generate_stream(
         self,
-        messages: list[dict],
-        config: Optional[GenerationConfig] = None
+        prompt: str,
+        config: GenerationConfig,
+        context: str = ""
     ) -> AsyncIterator[str]:
         """
-        Generate text with token streaming.
+        Generate streaming response.
         
         Args:
-            messages: Chat messages in format [{"role": "user", "content": "..."}]
+            prompt: User prompt
             config: Generation configuration
-        
+            context: Optional context from RAG
+            
         Yields:
-            Generated tokens one at a time
+            Generated text chunks
         """
         if not self._is_loaded:
             await self.load_model()
         
-        if config is None:
-            config = GenerationConfig()
+        from vllm import SamplingParams
         
-        print(f"\n🤖 Generating response (max {config.max_tokens} tokens)...")
+        # Construct prompt with context if provided
+        if context:
+            full_prompt = f"""Use the following context to answer the user's question. If the answer is not in the context, say so.
+
+Context:
+{context}
+
+Question:
+{prompt}"""
+        else:
+            full_prompt = prompt
+            
+        # Format for ChatML
+        messages = [
+            {"role": "system", "content": config.system_prompt},
+            {"role": "user", "content": full_prompt}
+        ]
         
-        try:
-            from vllm import SamplingParams
-            
-            # Add system prompt if not present
-            enhanced_messages = self._ensure_system_prompt(messages, config.system_prompt)
-            
-            # Format messages into prompt using chat template
-            prompt = self._format_chat_messages(enhanced_messages)
-            
-            # Sampling parameters
-            sampling_params = SamplingParams(
-                temperature=config.temperature,
-                top_p=config.top_p,
-                max_tokens=config.max_tokens,
-            )
-            
-            # Note: vLLM doesn't have native async streaming in the SDK
-            # We simulate streaming by generating and yielding chunks
-            loop = asyncio.get_event_loop()
-            
-            def _generate():
-                outputs = self._llm.generate([prompt], sampling_params=sampling_params)
-                return outputs[0].outputs[0].text
-            
-            # Generate full response
-            full_text = await loop.run_in_executor(None, _generate)
-            
-            # Simulate streaming by yielding in chunks
-            chunk_size = 5  # Characters per chunk
-            for i in range(0, len(full_text), chunk_size):
-                chunk = full_text[i:i+chunk_size]
-                yield chunk
-                await asyncio.sleep(0.01)  # Small delay to simulate streaming
+        # Use tokenizer to apply chat template
+        tokenizer = self._llm.get_tokenizer()
+        formatted_prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
         
-        except Exception as e:
-            print(f"❌ Generation error: {e}")
-            raise
+        sampling_params = SamplingParams(
+            temperature=config.temperature,
+            top_p=config.top_p,
+            max_tokens=config.max_tokens,
+            stop=["<|im_end|>", "<|endoftext|>"]
+        )
+        
+        request_id = f"req_{id(prompt)}"
+        
+        # Add request to engine
+        results_generator = self._llm.generate(
+            formatted_prompt,
+            sampling_params,
+            request_id=request_id
+        )
+        
+        # Stream results
+        previous_text = ""
+        async for request_output in results_generator:
+            current_text = request_output.outputs[0].text
+            new_text = current_text[len(previous_text):]
+            previous_text = current_text
+            yield new_text
     
     async def generate(
         self,
