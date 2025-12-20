@@ -11,6 +11,7 @@ from PyQt6.QtGui import QFont
 
 from private_gpt_app.ui.chat_widget import ChatWidget
 from private_gpt_app.ui.settings_dialog import SettingsDialog
+from private_gpt_app.ui.knowledge_base_dialog import KnowledgeBaseDialog
 from private_gpt_app.backend.vllm_service import VLLMService, GenerationConfig
 from private_gpt_app.utils.gpu_monitor import (
     detect_gpu, validate_hardware_requirements, print_gpu_info,
@@ -98,6 +99,24 @@ class MainWindow(QMainWindow):
         font = QFont()
         font.setPointSize(14)
         font.setBold(True)
+        header_label.setFont(font)
+        layout.addWidget(header_label)
+        
+        # Knowledge Base Button
+        kb_btn = QPushButton("📚 Knowledge Base")
+        kb_btn.clicked.connect(self.open_knowledge_base)
+        kb_btn.setStyleSheet("""
+            QPushButton {
+                text-align: left;
+                padding: 8px;
+                background-color: #2d2d2d;
+                border: 1px solid #3d3d3d;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #3d3d3d; }
+        """)
+        layout.addWidget(kb_btn)
+
         header_label.setFont(font)
         layout.addWidget(header_label)
         
@@ -496,3 +515,8 @@ class MainWindow(QMainWindow):
         # Clean up recovery data on clean exit
         self.crash_recovery.end_session()
         event.accept()
+    
+    def open_knowledge_base(self):
+        """Open the Knowledge Base management dialog."""
+        dialog = KnowledgeBaseDialog(self)
+        dialog.exec()

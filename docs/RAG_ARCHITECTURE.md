@@ -19,11 +19,17 @@ This document outlines the architecture for the Retrieval-Augmented Generation (
     - Metadata filtering (filename, page number).
     - Cosine similarity search.
 
-### 3. Ingestion Pipeline (Planned)
+### 3. Ingestion Pipeline (`src/private_gpt_app/rag/ingestion.py`)
 - **PDFs:** `PyMuPDF` (fitz) for fast extraction.
 - **Word:** `python-docx`.
-- **Chunking:** Recursive character splitter (512 tokens, 50 overlap).
-- **Concurrency:** `QThreadPool` for background processing.
+- **Text/MD:** Native Python reading.
+- **Chunking:** Custom `TextSplitter` (Recursive character splitter, 512 tokens, 50 overlap).
+- **Concurrency:** `IngestionWorker` (QThread) for background processing to prevent UI freezing.
+
+### 4. Document Management (`src/private_gpt_app/backend/document_store.py`)
+- **Database:** SQLite (`data/documents.db`).
+- **Purpose:** Tracks ingested files for listing and deletion in the UI.
+- **Sync:** Kept in sync with Qdrant (adding/removing files updates both).
 
 ## Data Flow
 

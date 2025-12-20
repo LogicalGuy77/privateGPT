@@ -91,5 +91,22 @@ class VectorStore:
         self._ensure_collection()
         print(f"Cleared collection '{self.collection_name}'.")
 
+    def delete_document(self, filename: str):
+        """Delete all chunks associated with a specific filename."""
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="source",
+                            match=models.MatchValue(value=filename)
+                        )
+                    ]
+                )
+            )
+        )
+        print(f"Deleted document '{filename}' from Qdrant.")
+
 # Global instance
 vector_store = VectorStore()
