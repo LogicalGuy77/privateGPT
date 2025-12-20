@@ -35,6 +35,10 @@ class SettingsDialog(QDialog):
         gen_group = self.create_generation_settings()
         layout.addWidget(gen_group)
         
+        # RAG Settings
+        rag_group = self.create_rag_settings()
+        layout.addWidget(rag_group)
+        
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -222,6 +226,78 @@ class SettingsDialog(QDialog):
         group.setLayout(layout)
         return group
     
+    def create_rag_settings(self) -> QGroupBox:
+        """Create RAG strategy settings group."""
+        group = QGroupBox("RAG Strategy Settings")
+        layout = QFormLayout()
+        
+        # RAG Strategy
+        strategy_layout = QVBoxLayout()
+        self.rag_strategy_combo = QComboBox()
+        self.rag_strategy_combo.addItems([
+            "Smart (Recommended) - Uses semantic similarity",
+            "Always - Use RAG for all queries if documents exist",
+            "Explicit Only - Only when files are mentioned"
+        ])
+        self.rag_strategy_combo.setCurrentIndex(0)  # Smart default
+        self.rag_strategy_combo.currentIndexChanged.connect(self.update_rag_info)
+        
+        strategy_layout.addWidget(QLabel("RAG Strategy:"))
+        strategy_layout.addWidget(self.rag_strategy_combo)
+        
+        # RAG info label
+        self.rag_info_label = QLabel(
+            "Smart mode checks semantic similarity to decide if documents are relevant."
+        )
+        self.rag_info_label.setStyleSheet("color: #888; font-size: 11px;")
+        self.rag_info_label.setWordWrap(True)
+        strategy_layout.addWidget(self.rag_info_label)
+        
+        layout.addRow(strategy_layout)
+        
+        # Relevance Threshold (for Smart mode)
+        threshold_layout = QVBoxLayout()
+        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.threshold_slider.setMinimum(30)
+        self.threshold_slider.setMaximum(90)
+        self.threshold_slider.setValue(50)  # 0.5 default
+        self.threshold_slider.setTickInterval(10)
+        self.threshold_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.threshold_slider.valueChanged.connect(self.update_threshold_label)
+        
+        self.threshold_label = QLabel("0.50")
+        self.threshold_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        
+        threshold_header = QHBoxLayout()
+        threshold_header.addWidget(QLabel("Relevance Threshold (Smart mode)"))
+        threshold_header.addWidget(self.threshold_label)
+        
+        threshold_layout.addLayout(threshold_header)
+        threshold_layout.addWidget(self.threshold_slider)
+        
+        threshold_info = QLabel("Higher = more strict (only very relevant documents)")
+        threshold_info.setStyleSheet("color: #888; font-size: 11px;")
+        threshold_layout.addWidget(threshold_info)
+        
+        layout.addRow(threshold_layout)
+        
+        group.setLayout(layout)
+        return group
+    
+    def update_rag_info(self, index: int):
+        """Update RAG info label based on selected strategy."""
+        info_texts = [
+            "Smart mode checks semantic similarity to decide if documents are relevant.",
+            "Always mode uses RAG for every query if any documents exist in knowledge base.",
+            "Explicit mode only uses RAG when you mention files like 'in report.pdf'."
+        ]
+        self.rag_info_label.setText(info_texts[index])
+    
+    def update_threshold_label(self, value: int):
+        """Update threshold label."""
+        threshold = value / 100.0
+        self.threshold_label.setText(f"{threshold:.2f}")
+    
     def update_memory_label(self, value: int):
         """Update memory utilization label."""
         self.memory_label.setText(f"{value}%")
@@ -286,6 +362,16 @@ class SettingsDialog(QDialog):
             
         if "max_tokens" in self.current_settings:
             self.tokens_slider.setValue(self.current_settings["max_tokens"])
+        
+        # RAG settings
+        if "rag_strategy" in self.current_settings:
+            strategy_map = {"smart": 0, "always": 1, "explicit": 2}
+            idx = strategy_map.get(self.current_settings["rag_strategy"], 0)
+            self.rag_strategy_combo.setCurrentIndex(idx)
+        
+        if "relevance_threshold" in self.current_settings:
+            value = int(self.current_settings["relevance_threshold"] * 100)
+            self.threshold_slider.setValue(value)
     
     def get_settings(self) -> dict:
         """Get current settings from UI."""
@@ -300,7 +386,11 @@ class SettingsDialog(QDialog):
             # Generation settings
             "temperature": self.temp_slider.value() / 100.0,
             "top_p": self.topp_slider.value() / 100.0,
-            "max_tokens": self.tokens_slider.value()
+            "max_tokens": self.tokens_slider.value(),
+            
+            # RAG settings
+            "rag_strategy": ["smart", "always", "explicit"][self.rag_strategy_combo.currentIndex()],
+            "relevance_threshold": self.threshold_slider.value() / 100.0
         }
     
     def reset_to_defaults(self):
@@ -311,6 +401,8 @@ class SettingsDialog(QDialog):
         self.temp_slider.setValue(70)  # 0.70
         self.topp_slider.setValue(95)  # 0.95
         self.tokens_slider.setValue(2048)
+        self.rag_strategy_combo.setCurrentIndex(0)  # Smart
+        self.threshold_slider.setValue(50)  # 0.5
     
     def apply_settings(self):
         """Emit settings and close dialog."""

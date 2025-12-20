@@ -14,6 +14,7 @@ from private_gpt_app.ui.settings_dialog import SettingsDialog
 from private_gpt_app.ui.knowledge_base_dialog import KnowledgeBaseDialog
 from private_gpt_app.ui.session_sidebar import SessionSidebar
 from private_gpt_app.ui.performance_dialog import PerformanceDialog
+from private_gpt_app.ui.file_picker_widget import FilePickerWidget
 from private_gpt_app.backend.vllm_service import VLLMService, GenerationConfig
 from private_gpt_app.backend.router import retrieval_service
 from private_gpt_app.backend.session_manager import session_manager, trim_conversation
@@ -36,13 +37,16 @@ class MainWindow(QMainWindow):
         self.gpu_info = None
         self.current_session_id = None
         self.rag_enabled = True  # RAG toggle
+        self.selected_files = []  # Files selected for current query
         self.current_settings = {
             "gpu_memory_utilization": 0.55,
-            "max_model_len": 2048,
+            "max_model_len": 4096,
             "cpu_offload_gb": 2.0,
             "temperature": 0.7,
             "top_p": 0.95,
-            "max_tokens": 2048
+            "max_tokens": 1024,
+            "rag_strategy": "smart",
+            "relevance_threshold": 0.5
         }
         
         # Crash recovery system
@@ -232,11 +236,16 @@ class MainWindow(QMainWindow):
         container = QWidget()
         container.setObjectName("inputContainer")
         container.setMinimumHeight(100)
-        container.setMaximumHeight(200)
+        container.setMaximumHeight(300)  # Increased for file picker
         
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 10, 20, 20)
         layout.setSpacing(10)
+        
+        # File picker (hidden by default)
+        self.file_picker = FilePickerWidget()
+        self.file_picker.files_selected.connect(self.on_files_selected)
+        layout.addWidget(self.file_picker)
         
         # Input field
         self.input_field = QTextEdit()
@@ -248,6 +257,34 @@ class MainWindow(QMainWindow):
         # Button row
         button_row = QHBoxLayout()
         button_row.setSpacing(10)
+        
+        # Attach files button
+        self.attach_btn = QPushButton("📎 Attach")
+        self.attach_btn.setObjectName("attachButton")
+        self.attach_btn.setToolTip("Attach files from knowledge base")
+        self.attach_btn.clicked.connect(self.toggle_file_picker)
+        self.attach_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3A3A3A;
+                color: #E5E5E5;
+                border: 1px solid #4A4A4A;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4A4A4A;
+            }
+            QPushButton:pressed {
+                background-color: #2A2A2A;
+            }
+        """)
+        button_row.addWidget(self.attach_btn)
+        
+        # Selected files label
+        self.selected_files_label = QLabel("")
+        self.selected_files_label.setStyleSheet("color: #2563EB; font-size: 11px;")
+        button_row.addWidget(self.selected_files_label)
         
         # Mode indicator
         mode_text = "🎭 Mock Mode" if self.mock_mode else "🤖 LLM Ready"
@@ -386,6 +423,51 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc()
     
+    def toggle_file_picker(self):
+        """Toggle file picker visibility."""
+        if self.file_picker.isVisible():
+            self.file_picker.hide()
+        else:
+            self.file_picker.show_files()
+    
+    def on_files_selected(self, filenames: list):
+        """Handle file selection from picker."""
+        self.selected_files = filenames
+        if filenames:
+            count = len(filenames)
+            display_names = ", ".join([f.split("/")[-1][:15] for f in filenames[:2]])
+            if count > 2:
+                display_names += f" +{count-2}"
+            self.selected_files_label.setText(f"📎 {display_names}")
+            self.attach_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #2563EB;
+                    color: white;
+                    border: 1px solid #1D4ED8;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #1D4ED8;
+                }
+            """)
+        else:
+            self.selected_files_label.setText("")
+            self.attach_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3A3A3A;
+                    color: #E5E5E5;
+                    border: 1px solid #4A4A4A;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #4A4A4A;
+                }
+            """)
+    
     def on_send_message(self):
         """Handle send button click."""
         message = self.input_field.toPlainText().strip()
@@ -412,10 +494,50 @@ class MainWindow(QMainWindow):
         used_rag = False
         
         if self.rag_enabled:
-            retrieval_result = retrieval_service.retrieve_context(user_message)
-            context = retrieval_result['context']
-            sources = retrieval_result['sources']
-            used_rag = retrieval_result['used_rag']
+            # If files are selected, filter by those files
+            if self.selected_files:
+                # Retrieve context for each selected file and combine
+                all_contexts = []
+                all_sources = set()
+                for filename in self.selected_files:
+                    result = retrieval_service.retrieve_context(
+                        user_message, 
+                        filter_filename=filename
+                    )
+                    if result['context']:
+                        all_contexts.append(result['context'])
+                        all_sources.update(result['sources'])
+                
+                if all_contexts:
+                    context = "\n\n".join(all_contexts)
+                    sources = list(all_sources)
+                    used_rag = True
+            else:
+                # Normal RAG retrieval
+                retrieval_result = retrieval_service.retrieve_context(user_message)
+                context = retrieval_result['context']
+                sources = retrieval_result['sources']
+                used_rag = retrieval_result['used_rag']
+        
+        # Clear file selection after use
+        if self.selected_files:
+            self.selected_files = []
+            self.selected_files_label.setText("")
+            self.file_picker.clear_selection()
+            self.file_picker.hide()
+            self.attach_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3A3A3A;
+                    color: #E5E5E5;
+                    border: 1px solid #4A4A4A;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #4A4A4A;
+                }
+            """)
         
         # Update RAG indicator
         if used_rag and sources:
@@ -594,16 +716,23 @@ class MainWindow(QMainWindow):
         dialog.exec()
     
     def apply_settings(self, new_settings: dict):
-        """Apply new settings (requires restart)."""
+        """Apply new settings (requires restart for model settings, immediate for RAG)."""
         self.current_settings.update(new_settings)
         
-        # Show restart message
+        # Apply RAG settings immediately (no restart needed)
+        if "rag_strategy" in new_settings:
+            retrieval_service.set_rag_strategy(new_settings["rag_strategy"])
+        
+        if "relevance_threshold" in new_settings:
+            retrieval_service.set_relevance_threshold(new_settings["relevance_threshold"])
+        
+        # Show restart message for model settings
         QMessageBox.information(
             self,
             "Settings Updated",
             "Settings have been updated.\n\n"
-            "Please start a new chat or restart the application\n"
-            "for changes to take effect.",
+            "RAG settings applied immediately.\n"
+            "Model settings will take effect on next chat or restart.",
             QMessageBox.StandardButton.Ok
         )
     
