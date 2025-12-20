@@ -6,12 +6,17 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTextEdit, QPushButton, QLabel, QSplitter, QListWidget, QMessageBox
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QFont
 
 from private_gpt_app.ui.chat_widget import ChatWidget
+from private_gpt_app.ui.settings_dialog import SettingsDialog
 from private_gpt_app.backend.vllm_service import VLLMService, GenerationConfig
-from private_gpt_app.utils.gpu_monitor import detect_gpu, validate_hardware_requirements, print_gpu_info
+from private_gpt_app.utils.gpu_monitor import (
+    detect_gpu, validate_hardware_requirements, print_gpu_info,
+    recommend_settings, get_current_vram_usage
+)
+from private_gpt_app.utils.crash_recovery import CrashRecovery
 
 
 class MainWindow(QMainWindow):
@@ -22,13 +27,27 @@ class MainWindow(QMainWindow):
         self.mock_mode = mock_mode
         self.llm_service = None
         self.conversation_history = []
+        self.gpu_info = None
+        self.current_settings = {
+            "gpu_memory_utilization": 0.55,
+            "max_model_len": 2048,
+            "cpu_offload_gb": 2.0,
+            "temperature": 0.7,
+            "top_p": 0.95,
+            "max_tokens": 2048
+        }
+        
+        # Crash recovery system
+        self.crash_recovery = CrashRecovery()
         
         # Check hardware if not in mock mode
         if not mock_mode:
             self.check_hardware()
+            self.check_recovery_data()
         
         self.setup_ui()
         self.setup_signals()
+        self.start_vram_monitoring()
     
     def setup_ui(self):
         """Initialize the user interface."""
@@ -100,6 +119,19 @@ class MainWindow(QMainWindow):
             "Dec 18 - Code Review",
             "Dec 17 - Documentation",
         ])
+        
+        # VRAM Monitor
+        self.vram_label = QLabel("VRAM: --")
+        self.vram_label.setObjectName("vramLabel")
+        self.vram_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.vram_label.setStyleSheet("color: #4CAF50; font-size: 11px; padding: 5px;")
+        layout.addWidget(self.vram_label)
+        
+        # Settings button
+        settings_btn = QPushButton("⚙️ Settings")
+        settings_btn.setObjectName("settingsButton")
+        settings_btn.clicked.connect(self.show_settings)
+        layout.addWidget(settings_btn)
         
         # Status label
         self.status_label = QLabel("Ready")
@@ -233,9 +265,9 @@ class MainWindow(QMainWindow):
             self.llm_service = VLLMService(
                 model_name=model_path,
                 quantization="awq_marlin",
-                gpu_memory_utilization=0.55,  # Works on 4GB GPUs
-                max_model_len=2048,  # 2K context for 4GB compatibility
-                cpu_offload_gb=2.0,
+                gpu_memory_utilization=self.current_settings["gpu_memory_utilization"],
+                max_model_len=self.current_settings["max_model_len"],
+                cpu_offload_gb=self.current_settings["cpu_offload_gb"],
                 verbose=False
             )
             
@@ -323,9 +355,9 @@ class MainWindow(QMainWindow):
                 
                 full_response = ""
                 config = GenerationConfig(
-                    temperature=0.7,
-                    max_tokens=2048,
-                    top_p=0.95
+                    temperature=self.current_settings["temperature"],
+                    max_tokens=self.current_settings["max_tokens"],
+                    top_p=self.current_settings["top_p"]
                 )
                 
                 async for token in self.llm_service.generate_stream(self.conversation_history, config):
@@ -340,6 +372,9 @@ class MainWindow(QMainWindow):
                     "role": "assistant",
                     "content": full_response
                 })
+                
+                # Auto-save conversation
+                self.crash_recovery.save_conversation(self.conversation_history)
                 
                 print(f"✓ Generated {len(full_response)} characters")
             
@@ -364,4 +399,100 @@ class MainWindow(QMainWindow):
         self.chat_widget.clear_messages()
         self.input_field.clear()
         self.conversation_history.clear()  # Reset conversation history
+        self.crash_recovery.start_session()  # Start new recovery session
         self.status_label.setText("New chat started")
+    
+    def show_settings(self):
+        """Show settings dialog."""
+        dialog = SettingsDialog(self, self.current_settings)
+        dialog.settings_changed.connect(self.apply_settings)
+        dialog.exec()
+    
+    def apply_settings(self, new_settings: dict):
+        """Apply new settings (requires restart)."""
+        self.current_settings.update(new_settings)
+        
+        # Show restart message
+        QMessageBox.information(
+            self,
+            "Settings Updated",
+            "Settings have been updated.\n\n"
+            "Please start a new chat or restart the application\n"
+            "for changes to take effect.",
+            QMessageBox.StandardButton.Ok
+        )
+    
+    def start_vram_monitoring(self):
+        """Start periodic VRAM monitoring."""
+        if self.mock_mode:
+            return
+        
+        # Create timer for VRAM updates
+        self.vram_timer = QTimer(self)
+        self.vram_timer.timeout.connect(self.update_vram_display)
+        self.vram_timer.start(2000)  # Update every 2 seconds
+    
+    def update_vram_display(self):
+        """Update VRAM usage display."""
+        usage = get_current_vram_usage()
+        
+        if usage:
+            used = usage["used_gb"]
+            total = usage["total_gb"]
+            pct = usage["utilization_pct"]
+            
+            # Color code based on usage
+            if pct < 60:
+                color = "#4CAF50"  # Green
+            elif pct < 80:
+                color = "#FF9800"  # Orange
+            else:
+                color = "#F44336"  # Red
+            
+            self.vram_label.setText(f"VRAM: {used:.1f}/{total:.1f} GB ({pct:.0f}%)")
+            self.vram_label.setStyleSheet(f"color: {color}; font-size: 11px; padding: 5px;")
+    
+    def check_recovery_data(self):
+        """Check for crash recovery data."""
+        if not self.crash_recovery.has_recovery_data():
+            self.crash_recovery.start_session()
+            return
+        
+        info = self.crash_recovery.get_recovery_info()
+        if not info:
+            self.crash_recovery.start_session()
+            return
+        
+        # Ask user if they want to restore
+        reply = QMessageBox.question(
+            self,
+            "Restore Previous Session?",
+            f"Found unsaved session from {info['timestamp']}\n"
+            f"Messages: {info['message_count']}\n\n"
+            "Would you like to restore it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            conversation = self.crash_recovery.load_latest_session()
+            if conversation:
+                self.conversation_history = conversation
+                
+                # Display recovered messages
+                for msg in conversation:
+                    is_user = (msg["role"] == "user")
+                    self.chat_widget.add_message(msg["content"], is_user=is_user)
+                
+                self.status_label.setText(f"✓ Restored {len(conversation)} messages")
+        else:
+            self.crash_recovery.clear_all_recovery_data()
+        
+        # Start new session
+        self.crash_recovery.start_session()
+    
+    def closeEvent(self, event):
+        """Handle window close event."""
+        # Clean up recovery data on clean exit
+        self.crash_recovery.end_session()
+        event.accept()

@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 
 
 @dataclass
@@ -11,8 +11,19 @@ class GPUInfo:
     name: str
     vram_total_gb: float
     vram_free_gb: float
+    vram_used_gb: float
     cuda_available: bool
     compute_capability: Optional[tuple] = None
+
+
+@dataclass
+class OptimalSettings:
+    """Optimal model settings for detected GPU."""
+    gpu_memory_utilization: float
+    max_model_len: int
+    max_num_seqs: int
+    cpu_offload_gb: float
+    description: str
 
 
 def detect_gpu() -> Optional[GPUInfo]:
@@ -30,15 +41,16 @@ def detect_gpu() -> Optional[GPUInfo]:
         
         total_vram = props.total_memory / (1024 ** 3)  # Convert to GB
         
-        # Get free VRAM
+        # Get memory usage
         torch.cuda.empty_cache()
-        free_vram = (torch.cuda.get_device_properties(device_id).total_memory - 
-                     torch.cuda.memory_allocated(device_id)) / (1024 ** 3)
+        used_vram = torch.cuda.memory_allocated(device_id) / (1024 ** 3)
+        free_vram = total_vram - used_vram
         
         info = GPUInfo(
             name=props.name,
             vram_total_gb=total_vram,
             vram_free_gb=free_vram,
+            vram_used_gb=used_vram,
             cuda_available=True,
             compute_capability=(props.major, props.minor)
         )
@@ -51,6 +63,94 @@ def detect_gpu() -> Optional[GPUInfo]:
     except Exception as e:
         print(f"⚠️  Error detecting GPU: {e}")
         return None
+
+
+def get_current_vram_usage() -> Optional[Dict[str, float]]:
+    """
+    Get current VRAM usage without full GPU detection.
+    Returns dict with 'used_gb', 'free_gb', 'total_gb', 'utilization_pct'.
+    """
+    try:
+        import torch
+        
+        if not torch.cuda.is_available():
+            return None
+        
+        device_id = 0
+        torch.cuda.empty_cache()
+        
+        total = torch.cuda.get_device_properties(device_id).total_memory / (1024 ** 3)
+        used = torch.cuda.memory_allocated(device_id) / (1024 ** 3)
+        free = total - used
+        utilization = (used / total) * 100
+        
+        return {
+            "used_gb": used,
+            "free_gb": free,
+            "total_gb": total,
+            "utilization_pct": utilization
+        }
+    except Exception:
+        return None
+
+
+def recommend_settings(gpu_info: GPUInfo) -> OptimalSettings:
+    """
+    Recommend optimal settings based on GPU VRAM.
+    
+    Args:
+        gpu_info: Detected GPU information
+        
+    Returns:
+        OptimalSettings with recommended configuration
+    """
+    vram = gpu_info.vram_total_gb
+    
+    if vram >= 10:
+        # High-end GPUs (RTX 3080, 4070, 4080, etc.)
+        return OptimalSettings(
+            gpu_memory_utilization=0.75,
+            max_model_len=6144,
+            max_num_seqs=8,
+            cpu_offload_gb=0.0,
+            description="Optimal - 6K context, maximum performance"
+        )
+    elif vram >= 8:
+        # Mid-high GPUs (RTX 3070, 4060 Ti, 5060, etc.)
+        return OptimalSettings(
+            gpu_memory_utilization=0.70,
+            max_model_len=4096,
+            max_num_seqs=6,
+            cpu_offload_gb=0.0,
+            description="High - 4K context, excellent performance"
+        )
+    elif vram >= 6:
+        # Mid-range GPUs (RTX 3060, 2060, 4060, etc.)
+        return OptimalSettings(
+            gpu_memory_utilization=0.65,
+            max_model_len=3072,
+            max_num_seqs=4,
+            cpu_offload_gb=1.0,
+            description="Balanced - 3K context, good performance"
+        )
+    elif vram >= 4:
+        # Low-end GPUs (GTX 1650, RTX 3050 4GB, etc.)
+        return OptimalSettings(
+            gpu_memory_utilization=0.55,
+            max_model_len=2048,
+            max_num_seqs=2,
+            cpu_offload_gb=2.0,
+            description="Conservative - 2K context, stable"
+        )
+    else:
+        # Very low VRAM
+        return OptimalSettings(
+            gpu_memory_utilization=0.50,
+            max_model_len=1536,
+            max_num_seqs=1,
+            cpu_offload_gb=3.0,
+            description="Minimal - 1.5K context, maximum stability"
+        )
 
 
 def validate_hardware_requirements(gpu_info: Optional[GPUInfo], min_vram_gb: float = 6.0) -> tuple[bool, str]:
