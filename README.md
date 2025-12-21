@@ -12,6 +12,11 @@ A local, privacy-focused desktop chat application powered by Qwen2.5-3B-Instruct
 - ⚡ **Fast Generation** - 66-378 tokens/sec on RTX 5060 Laptop
 - 🤖 **Apache 2.0 Licensed Model** - Commercial use ready
 
+<img width="1350" height="899" alt="image" src="https://github.com/user-attachments/assets/02eb4e9e-4506-4a3a-aee8-6fbc29e197cb" />
+
+__________________________________________________________________________________
+<img width="1189" height="814" alt="image" src="https://github.com/user-attachments/assets/76728bc6-bc5b-4db2-85e5-8b2fed4dcc46" />
+
 ## Prerequisites
 
 - **Hardware:**
