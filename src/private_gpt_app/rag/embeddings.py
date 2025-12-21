@@ -68,5 +68,16 @@ class EmbeddingService:
         self.embed_query.cache_clear()
         print("Embedding cache cleared.")
 
-# Global instance
-embedding_service = EmbeddingService()
+# Global instance - created lazily to avoid initialization in worker processes
+_embedding_service_instance = None
+
+def get_embedding_service() -> EmbeddingService:
+    """Get or create the global embedding service instance.
+    
+    This should be called once in the main process at startup to prevent
+    lazy initialization in vLLM worker processes.
+    """
+    global _embedding_service_instance
+    if _embedding_service_instance is None:
+        _embedding_service_instance = EmbeddingService()
+    return _embedding_service_instance

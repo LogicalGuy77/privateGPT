@@ -16,23 +16,34 @@ def get_bundled_model_path() -> Path | None:
     Returns:
         Path to bundled model or None if not found
     """
-    # When running from Nuitka standalone build
+    # When running from packaged executable (PyInstaller or Nuitka)
     if getattr(sys, 'frozen', False):
-        # Nuitka sets this
+        # PyInstaller sets sys._MEIPASS
         if hasattr(sys, '_MEIPASS'):
-            base_path = Path(sys._MEIPASS)
+            # PyInstaller extracts to temp dir, but data files are in _internal
+            base_path = Path(sys.executable).parent / "_internal"
+            # Also check the _MEIPASS location
+            meipass_path = Path(sys._MEIPASS)
+            
+            # Try both locations
+            for bp in [base_path, meipass_path]:
+                model_path = bp / "models" / "Qwen2.5-3B-Instruct-AWQ"
+                if model_path.exists() and (model_path / "config.json").exists():
+                    print(f"✅ Found bundled model at: {model_path}")
+                    return model_path
         else:
             # Nuitka standalone
             base_path = Path(sys.executable).parent
+            model_path = base_path / "models" / "Qwen2.5-3B-Instruct-AWQ"
+            if model_path.exists() and (model_path / "config.json").exists():
+                print(f"✅ Found bundled model at: {model_path}")
+                return model_path
     else:
         # Development mode
         base_path = Path(__file__).parent.parent.parent.parent
-    
-    # Check for bundled model
-    model_path = base_path / "models" / "Qwen2.5-3B-Instruct-AWQ"
-    
-    if model_path.exists() and (model_path / "config.json").exists():
-        return model_path
+        model_path = base_path / "models" / "Qwen2.5-3B-Instruct-AWQ"
+        if model_path.exists() and (model_path / "config.json").exists():
+            return model_path
     
     return None
 

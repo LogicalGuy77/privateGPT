@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
-Optimized Nuitka build script for Private-GPT with bundled model.
-Includes the Qwen2.5-3B-Instruct-AWQ model in the distribution.
+Build script using PyInstaller for Private-GPT.
+Fast build (5-10 min) with low memory usage.
 """
 
 import subprocess
@@ -11,12 +11,20 @@ from pathlib import Path
 
 def clean_build():
     """Remove old build artifacts."""
-    dirs_to_clean = ['dist', 'build', '*.dist', '*.build', '*.onefile-build']
+    dirs_to_clean = ['dist', 'build']
+    files_to_clean = ['*.spec']
+    
     for pattern in dirs_to_clean:
         for path in Path('.').glob(pattern):
             if path.is_dir():
                 print(f"🗑️  Removing {path}")
                 shutil.rmtree(path, ignore_errors=True)
+    
+    for pattern in files_to_clean:
+        for path in Path('.').glob(pattern):
+            if path.is_file():
+                print(f"🗑️  Removing {path}")
+                path.unlink()
 
 def verify_model_exists():
     """Check if model is available to bundle."""
@@ -37,127 +45,108 @@ def verify_model_exists():
     print(f"✅ Model found at {model_path}")
     return True
 
-def get_nuitka_args():
-    """Build Nuitka command arguments with bundled model."""
+def build():
+    """Build with PyInstaller."""
+    print("🔨 Building Private-GPT with PyInstaller...")
+    print("⏱️  This will take 5-10 minutes...")
+    print("💾 Expected size: ~4-5GB (includes 2.6GB model)\n")
     
-    is_windows = sys.platform == "win32"
+    if not verify_model_exists():
+        print("\n❌ Build aborted - model not found")
+        return False
     
-    # Core options
+    # Check for PyInstaller
+    try:
+        import PyInstaller
+        print(f"✅ PyInstaller {PyInstaller.__version__} found\n")
+    except ImportError:
+        print("📦 Installing PyInstaller...")
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
+    
+    clean_build()
+    
+    # Determine separator based on OS
+    separator = ';' if sys.platform == 'win32' else ':'
+    
+    # PyInstaller command
     args = [
-        sys.executable, '-m', 'nuitka',
-        '--standalone',
-        '--enable-plugin=pyqt6',
+        sys.executable, '-m', 'PyInstaller',
+        '--name=PrivateGPT',
+        '--onedir',  # Create directory (faster than onefile)
+        '--noconfirm',
+        # Don't use --windowed for apps with multiprocessing (vLLM)
         
-        # Output
-        '--output-dir=dist',
-        f'--output-filename=PrivateGPT{".exe" if is_windows else ""}',
+        # Use custom hooks for NVIDIA libraries
+        '--additional-hooks-dir=hooks',
         
-        # Performance
-        '--assume-yes-for-downloads',
-        '--show-progress',
-        '--jobs=4',
+        # Bundle system NVIDIA driver library (critical for GPU access)
+        '--add-binary=/lib/x86_64-linux-gnu/libcuda.so.1:nvidia/cuda/lib',
+        '--add-binary=/lib/x86_64-linux-gnu/libcuda.so:nvidia/cuda/lib',
         
-        # Include only what we need
-        '--include-package=vllm',
-        '--include-package=torch',
-        '--include-package=PyQt6',
-        '--include-package=qdrant_client',
-        '--include-package=sentence_transformers',
-        '--include-package=transformers',  # Needed for tokenizer
-        '--include-package-data=tokenizers',
-        '--include-package=unittest.mock',  # Required by some dependencies
-        '--include-package=rank_bm25',  # For hybrid search
+        # Add data files
+        f'--add-data=src/private_gpt_app/ui/styles.qss{separator}ui',
+        f'--add-data=src/private_gpt_app/ui/styles_modern.qss{separator}ui',
+        f'--add-data=models/Qwen2.5-3B-Instruct-AWQ{separator}models/Qwen2.5-3B-Instruct-AWQ',
         
-        # Include metadata (prevents runtime errors)
-        '--include-distribution-metadata=triton',  # Required by transformers
-        '--include-distribution-metadata=torch',  # Required by vllm
-        '--include-distribution-metadata=vllm',  # Required for version checks
-        '--include-distribution-metadata=transformers',  # Required for model loading
-        '--include-distribution-metadata=sentencepiece',  # Required by some tokenizers
+        # Hidden imports (modules not auto-detected)
+        '--hidden-import=vllm',
+        '--hidden-import=torch',
+        '--hidden-import=PyQt6',
+        '--hidden-import=qdrant_client',
+        '--hidden-import=sentence_transformers',
+        '--hidden-import=transformers',
+        '--hidden-import=rank_bm25',
+        '--hidden-import=unittest.mock',
+        '--hidden-import=private_gpt_app.backend.vllm_service',
+        '--hidden-import=private_gpt_app.backend.session_manager',
+        '--hidden-import=private_gpt_app.backend.router',
+        '--hidden-import=private_gpt_app.rag.vector_store',
+        '--hidden-import=private_gpt_app.rag.embeddings',
         
-        # Exclude heavy stuff we don't use
-        '--nofollow-import-to=transformers.commands',
-        '--nofollow-import-to=transformers.models.albert',
-        '--nofollow-import-to=transformers.models.bart',
-        '--nofollow-import-to=transformers.models.bert',
-        '--nofollow-import-to=transformers.models.gpt2',
-        '--nofollow-import-to=transformers.models.llama',  # We use qwen
-        '--nofollow-import-to=sklearn',
-        '--nofollow-import-to=scipy',
-        '--nofollow-import-to=matplotlib',
-        '--nofollow-import-to=pandas',
-        '--nofollow-import-to=pytest',
-        '--nofollow-import-to=setuptools',
-        '--nofollow-import-to=pip',
-        '--nofollow-import-to=tensorboard',
-        '--nofollow-import-to=wandb',
-        '--nofollow-import-to=notebook',
-        '--nofollow-import-to=IPython',
+        # Collect all data for these packages
+        '--collect-all=vllm',
+        '--collect-all=torch',
+        '--collect-all=transformers',
+        '--collect-all=sentence_transformers',
         
-        # Include UI data files
-        '--include-data-file=src/private_gpt_app/ui/styles.qss=private_gpt_app/ui/styles.qss',
-        '--include-data-file=src/private_gpt_app/ui/styles_modern.qss=private_gpt_app/ui/styles_modern.qss',
-        
-        # Bundle the entire model directory
-        '--include-data-dir=models/Qwen2.5-3B-Instruct-AWQ=models/Qwen2.5-3B-Instruct-AWQ',
+        # Copy CUDA metadata and binaries (critical for GPU detection)
+        '--copy-metadata=torch',
+        '--copy-metadata=nvidia-cublas-cu12',
+        '--copy-metadata=nvidia-cuda-cupti-cu12',
+        '--copy-metadata=nvidia-cuda-nvrtc-cu12',
+        '--copy-metadata=nvidia-cuda-runtime-cu12',
+        '--copy-metadata=nvidia-cudnn-cu12',
+        '--copy-metadata=nvidia-cufft-cu12',
+        '--copy-metadata=nvidia-curand-cu12',
+        '--copy-metadata=nvidia-cusolver-cu12',
+        '--copy-metadata=nvidia-cusparse-cu12',
+        '--copy-metadata=nvidia-nccl-cu12',
+        '--copy-metadata=nvidia-nvjitlink-cu12',
+        '--copy-metadata=nvidia-nvtx-cu12',
+        '--copy-metadata=triton',
         
         # Entry point
         'src/private_gpt_app/main.py'
     ]
     
-    return args
-
-def build():
-    """Execute Nuitka build with bundled model."""
-    print("🔨 Building Private-GPT with Nuitka (with bundled model)...")
-    print("⏱️  This will take 10-20 minutes...")
-    print("💾 Expected size: ~3-4GB (includes 2GB model)\n")
-    
-    # Verify model exists
-    if not verify_model_exists():
-        print("\n❌ Build aborted - model not found")
-        return False
-    
-    clean_build()
-    
-    args = get_nuitka_args()
-    
     print(f"Command: {' '.join(args)}\n")
     
     try:
-        # Run nuitka
         subprocess.run(args, check=True)
         
-        # Rename main.dist to PrivateGPT.dist
-        main_dist = Path("dist/main.dist")
-        private_gpt_dist = Path("dist/PrivateGPT.dist")
-        if main_dist.exists():
-            if private_gpt_dist.exists():
-                shutil.rmtree(private_gpt_dist)
-            main_dist.rename(private_gpt_dist)
-            print(f"📁 Renamed {main_dist} -> {private_gpt_dist}")
-        
-        # Rename main.build to PrivateGPT.build
-        main_build = Path("dist/main.build")
-        private_gpt_build = Path("dist/PrivateGPT.build")
-        if main_build.exists():
-            if private_gpt_build.exists():
-                shutil.rmtree(private_gpt_build)
-            main_build.rename(private_gpt_build)
-        
         print("\n✅ Build successful!")
-        print(f"📦 Executable: dist/PrivateGPT.dist/PrivateGPT")
+        print(f"📦 Executable: dist/PrivateGPT/PrivateGPT")
         print("\n📝 Next steps:")
-        print("1. Test: cd dist/PrivateGPT.dist && ./PrivateGPT --mock")
-        print("2. For single-file build, add --onefile flag (slower)")
+        print("1. Test: cd dist/PrivateGPT && ./PrivateGPT --mock")
+        print("2. Full test: cd dist/PrivateGPT && ./PrivateGPT")
         
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Build failed with error: {e}")
+        print(f"\n❌ Build failed: {e}")
         return False
     except KeyboardInterrupt:
-        print("\n⚠️  Build cancelled by user")
+        print("\n⚠️  Build cancelled")
         return False
 
 if __name__ == '__main__':

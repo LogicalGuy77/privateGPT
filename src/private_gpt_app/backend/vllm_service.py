@@ -5,6 +5,10 @@ import os
 from typing import Optional, AsyncIterator, Callable
 from dataclasses import dataclass
 
+# CRITICAL: Disable vLLM multiprocessing to prevent spawning multiple GUI windows
+# This MUST be set before importing vllm
+os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+
 # Memory optimizations
 # NOTE: PYTORCH_CUDA_ALLOC_CONF is deprecated; prefer PYTORCH_ALLOC_CONF.
 os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")

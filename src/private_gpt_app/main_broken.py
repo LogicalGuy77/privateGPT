@@ -6,32 +6,45 @@ import asyncio
 from pathlib import Path
 import os
 import torch
+import multiprocessing
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import Qt
-import qasync
+# CRITICAL: Prevent worker processes from running GUI code
+# This environment variable is NOT set in worker processes
+_IS_MAIN_PROCESS = os.environ.get('PRIVATE_GPT_MAIN_PROCESS') == '1'
 
-from private_gpt_app.ui.main_window import MainWindow
-from private_gpt_app.utils.setup_manager import check_first_time_setup, FirstTimeSetupDialog, get_model_path
-from private_gpt_app.utils.paths import get_resource_path
+# Set for child processes to detect
+if __name__ == "__main__":
+    os.environ['PRIVATE_GPT_MAIN_PROCESS'] = '1'
+    _IS_MAIN_PROCESS = True
+    multiprocessing.set_start_method('spawn', force=True)
 
+# Only import GUI modules in main process
+if _IS_MAIN_PROCESS:
+    from PyQt6.QtWidgets import QApplication, QMessageBox
+    from PyQt6.QtCore import Qt
+    import qasync
 
-def setup_app() -> QApplication:
-    """Initialize QApplication with proper settings."""
-    # Enable high DPI scaling
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
-    
-    app = QApplication(sys.argv)
-    app.setApplicationName("Private-GPT")
-    app.setOrganizationName("Private-GPT")
-    app.setApplicationVersion("0.1.0")
-    
-    return app
+    from private_gpt_app.ui.main_window import MainWindow
+    from private_gpt_app.utils.setup_manager import check_first_time_setup, FirstTimeSetupDialog, get_model_path
+    from private_gpt_app.utils.paths import get_resource_path
 
 
-def load_stylesheet(app: QApplication, dev_mode: bool = False) -> None:
+    def setup_app() -> QApplication:
+        """Initialize QApplication with proper settings."""
+        # Enable high DPI scaling
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+        
+        app = QApplication(sys.argv)
+        app.setApplicationName("Private-GPT")
+        app.setOrganizationName("Private-GPT")
+        app.setApplicationVersion("0.1.0")
+        
+        return app
+
+
+    def load_stylesheet(app: QApplication, dev_mode: bool = False) -> None:
     """Load and apply QSS stylesheet."""
     # Try modern stylesheet first
     style_path = get_resource_path("ui/styles_modern.qss")
@@ -88,6 +101,13 @@ async def main_async(mock_mode: bool = False, dev_mode: bool = False) -> None:
     
     # Load stylesheet
     load_stylesheet(app, dev_mode=dev_mode)
+    
+    # Pre-initialize embedding service BEFORE creating MainWindow
+    # This prevents it from being lazily initialized in vLLM worker processes
+    if not mock_mode:
+        from private_gpt_app.rag.embeddings import get_embedding_service
+        print("🔧 Pre-loading embedding model...")
+        get_embedding_service()  # Force initialization in main process
     
     # Get model path (bundled or default)
     model_path = get_model_path() if not mock_mode else None
@@ -178,6 +198,10 @@ def debug_cuda_env():
 
 
 if __name__ == "__main__":
-    # Only run in main process, not in vLLM workers
-    debug_cuda_env()
-    main()
+    # Only run main in the primary process, not in vLLM workers
+    if _IS_MAIN_PROCESS:
+        debug_cuda_env()
+        main()
+    else:
+        # Worker process - do nothing
+        pass

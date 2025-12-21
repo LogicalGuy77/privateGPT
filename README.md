@@ -37,12 +37,9 @@ ________________________________________________________________________________
 ### 1. Install Dependencies
 
 ```bash
-cd /private-gpt-app
+cd /home/harshit/coding/private-gpt/private-gpt-app
 
-# Install vLLM and dependencies
-uv pip install vllm
-
-# Or sync all dependencies
+# Install all dependencies
 uv sync
 ```
 

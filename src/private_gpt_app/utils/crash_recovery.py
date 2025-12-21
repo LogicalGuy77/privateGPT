@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 
+from private_gpt_app.utils.paths import get_data_dir
+
 
 class CrashRecovery:
     """Manages auto-save and crash recovery for chat sessions."""
@@ -18,7 +20,7 @@ class CrashRecovery:
             recovery_dir: Directory for recovery files (default: data/crash_recovery)
         """
         if recovery_dir is None:
-            recovery_dir = Path(__file__).parent.parent.parent.parent / "data" / "crash_recovery"
+            recovery_dir = get_data_dir() / "crash_recovery"
         
         self.recovery_dir = recovery_dir
         self.recovery_dir.mkdir(parents=True, exist_ok=True)

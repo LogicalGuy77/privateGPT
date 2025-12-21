@@ -24,6 +24,7 @@ from private_gpt_app.utils.gpu_monitor import (
 )
 from private_gpt_app.utils.crash_recovery import CrashRecovery
 from private_gpt_app.utils.performance import perf_monitor
+from private_gpt_app.utils.setup_manager import get_bundled_model_path
 
 
 class MainWindow(QMainWindow):
@@ -64,9 +65,16 @@ class MainWindow(QMainWindow):
         self.setup_signals()
         self.start_vram_monitoring()
 
+        # Auto-load LLM at startup if not in mock mode
+        # Do this BEFORE crash recovery to ensure embedding model is loaded
+        if not mock_mode and self.llm_service is None:
+            # Schedule LLM loading after UI is shown
+            QTimer.singleShot(500, lambda: asyncio.create_task(self.initialize_llm()))
+        
         # Crash recovery needs the UI (chat widget) to be initialized.
+        # Check recovery data AFTER scheduling LLM load to avoid dialog issues
         if not mock_mode:
-            self.check_recovery_data()
+            QTimer.singleShot(600, self.check_recovery_data)
     
     def setup_ui(self):
         """Initialize the user interface."""
@@ -383,10 +391,10 @@ class MainWindow(QMainWindow):
         try:
             # Initialize VLLMService with Qwen2.5-3B-Instruct-AWQ
             # Apache 2.0 license - fully commercial, AWQ 4-bit quantized (~2.7GB)
-            models_dir = Path(__file__).parent.parent.parent.parent / "models" / "Qwen2.5-3B-Instruct-AWQ"
-            if models_dir.exists():
-                model_path = str(models_dir)
-                print(f"📁 Loading model from local folder: {model_path}")
+            bundled_model = get_bundled_model_path()
+            if bundled_model:
+                model_path = str(bundled_model)
+                print(f"📁 Loading bundled model: {model_path}")
             else:
                 model_path = self.model_path
                 print(f"📦 Loading model: {model_path}")
