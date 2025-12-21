@@ -63,21 +63,36 @@ def get_nuitka_args():
         '--include-package=PyQt6',
         '--include-package=qdrant_client',
         '--include-package=sentence_transformers',
+        '--include-package=transformers',  # Needed for tokenizer
         '--include-package-data=tokenizers',
+        '--include-package=unittest.mock',  # Required by some dependencies
+        '--include-package=rank_bm25',  # For hybrid search
+        
+        # Include metadata (prevents runtime errors)
+        '--include-distribution-metadata=triton',  # Required by transformers
+        '--include-distribution-metadata=torch',  # Required by vllm
+        '--include-distribution-metadata=vllm',  # Required for version checks
+        '--include-distribution-metadata=transformers',  # Required for model loading
+        '--include-distribution-metadata=sentencepiece',  # Required by some tokenizers
         
         # Exclude heavy stuff we don't use
         '--nofollow-import-to=transformers.commands',
-        '--nofollow-import-to=transformers.models',
+        '--nofollow-import-to=transformers.models.albert',
+        '--nofollow-import-to=transformers.models.bart',
+        '--nofollow-import-to=transformers.models.bert',
+        '--nofollow-import-to=transformers.models.gpt2',
+        '--nofollow-import-to=transformers.models.llama',  # We use qwen
         '--nofollow-import-to=sklearn',
         '--nofollow-import-to=scipy',
         '--nofollow-import-to=matplotlib',
         '--nofollow-import-to=pandas',
         '--nofollow-import-to=pytest',
-        '--nofollow-import-to=unittest',
         '--nofollow-import-to=setuptools',
         '--nofollow-import-to=pip',
         '--nofollow-import-to=tensorboard',
         '--nofollow-import-to=wandb',
+        '--nofollow-import-to=notebook',
+        '--nofollow-import-to=IPython',
         
         # Include UI data files
         '--include-data-file=src/private_gpt_app/ui/styles.qss=private_gpt_app/ui/styles.qss',
@@ -112,6 +127,23 @@ def build():
     try:
         # Run nuitka
         subprocess.run(args, check=True)
+        
+        # Rename main.dist to PrivateGPT.dist
+        main_dist = Path("dist/main.dist")
+        private_gpt_dist = Path("dist/PrivateGPT.dist")
+        if main_dist.exists():
+            if private_gpt_dist.exists():
+                shutil.rmtree(private_gpt_dist)
+            main_dist.rename(private_gpt_dist)
+            print(f"📁 Renamed {main_dist} -> {private_gpt_dist}")
+        
+        # Rename main.build to PrivateGPT.build
+        main_build = Path("dist/main.build")
+        private_gpt_build = Path("dist/PrivateGPT.build")
+        if main_build.exists():
+            if private_gpt_build.exists():
+                shutil.rmtree(private_gpt_build)
+            main_build.rename(private_gpt_build)
         
         print("\n✅ Build successful!")
         print(f"📦 Executable: dist/PrivateGPT.dist/PrivateGPT")
