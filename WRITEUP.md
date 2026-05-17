@@ -92,11 +92,11 @@ For session management, I didn't want a heavy database server. I used SQLite but
 *   **FTS5:** Implemented a virtual table using the FTS5 extension for instant full-text search across chat history.
 *   **Triggers:** Created SQL triggers to automatically sync the main sessions table with the FTS5 search index.
 
-### 4. The UI: PyQt6 & Nuitka
+### 4. The UI: PyQt6 & Packaging
 *   **Framework:** **PyQt6**. I avoided Electron. A local AI app shouldn't eat 1GB of RAM just to render a chat window. Native widgets ensure the app stays lightweight.
-*   **Packaging:** Compiled with **Nuitka** instead of PyInstaller.
-    *   Nuitka compiles Python code to C, resulting in faster startup times.
-    *   I used aggressive `--nofollow-import-to` flags to exclude heavy unused libraries like `pandas`, `scipy`, and `sklearn`, keeping the final binary size manageable despite bundling the 2GB model.
+*   **Packaging:** The current repository uses **PyInstaller** via `build.py`.
+    *   The build bundles the PyQt UI, vLLM/Torch dependencies, CUDA-related metadata, and the local Qwen model directory.
+    *   Earlier experiments considered Nuitka, but PyInstaller is the active build path in this codebase.
 
 ## Conclusion
 

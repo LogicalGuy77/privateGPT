@@ -1,280 +1,186 @@
-# Optimization Recommendations for Private-GPT
+# Optimization Guide
 
-## ✅ Already Implemented Optimizations
+This guide summarizes the current optimization state and the highest-value next
+changes for Private-GPT.
 
-### 1. **VRAM Efficiency**
-- ✅ AWQ Marlin quantization (3GB model vs 7GB FP16)
-- ✅ CPU-based embeddings (saves 1-2GB VRAM)
-- ✅ Configurable GPU memory utilization (0.55 for 4GB GPUs)
-- ✅ Lazy model loading
-- ✅ Token streaming (prevents KV cache spikes)
+## Current Optimizations
 
-### 2. **Performance**
-- ✅ Qdrant (Rust-based, faster than Python FAISS)
-- ✅ Sentence-transformers on CPU with LRU cache
-- ✅ Background ingestion (QThread prevents UI freezing)
-- ✅ PyMuPDF (fastest PDF parser, 10x faster than pypdf)
+### Inference
 
-### 3. **User Experience**
-- ✅ Auto RAG detection (keywords + heuristics)
-- ✅ Source citations
-- ✅ Progress bars for long operations
-- ✅ VRAM monitoring
-- ✅ Crash recovery
+- Main model: `Qwen/Qwen2.5-3B-Instruct-AWQ`
+- Runtime: vLLM
+- Quantization: `awq_marlin`
+- `dtype="float16"`
+- `gpu_memory_utilization=0.55`
+- `max_model_len=4096`
+- `max_tokens=1024`
+- `enable_prefix_caching=True`
+- `enforce_eager=True` for stability
+- optional `cpu_offload_gb` from settings
 
----
+The UI currently receives chunked output, but vLLM generation itself happens as
+a full synchronous call in an executor.
 
-## 🚀 Recommended Future Optimizations
+### RAG
 
-### Phase 3 Priorities
+- Embeddings run on CPU with `sentence-transformers/all-MiniLM-L6-v2`.
+- Qdrant local mode stores vectors under `data/qdrant_db`.
+- Hybrid reranking blends semantic results with BM25.
+- Retrieved context is truncated with token counting before generation.
+- RAG strategy is configurable: `always`, `smart`, or `explicit`.
 
-#### 1. **Session Management (SQLite + WAL Mode)**
+### Persistence
+
+- Chat sessions use SQLite.
+- WAL mode is enabled.
+- FTS5 powers session search.
+- Recent sessions are cached.
+- Conversations are trimmed to the last 10 messages before generation.
+
+### UI and Reliability
+
+- PyQt6 desktop UI.
+- Mock mode for UI testing.
+- QSS hot reload in `--dev`.
+- VRAM monitoring.
+- Crash recovery.
+- Performance stats dialog.
+
+## Important Caveats
+
+### 1. 4GB vs 6GB VRAM
+
+Some settings are conservative enough to experiment with 4GB GPUs, but current
+runtime validation warns below 6GB VRAM. The active default context is 4096
+tokens, not 2048.
+
+### 2. Simulated Streaming
+
+`VLLMService.generate_stream()` calls `LLM.generate()` once, then yields the full
+text in small chunks. This is UI streaming, not true token streaming from vLLM.
+
+### 3. Token-Based Chunking Is Not Used for Ingestion
+
+`rag/chunking.py` provides token utilities, and retrieval uses them for context
+counting/truncation. Ingestion still uses the character-based `TextSplitter` in
+`rag/ingestion.py`.
+
+### 4. Duplicate Detection Runs Too Late
+
+`DocumentStore` can detect duplicate files by hash, but ingestion currently
+upserts chunks into Qdrant before inserting the SQLite document record. Move the
+duplicate check before text extraction/embedding to avoid duplicate vectors.
+
+## Recommended Next Fixes
+
+### 1. Check Duplicates Before Ingestion
+
+Current rough flow:
+
+```text
+extract -> chunk -> embed/upsert -> add document row
+```
+
+Recommended flow:
+
+```text
+hash/check duplicate -> extract -> chunk -> embed/upsert -> add document row
+```
+
+Impact:
+
+- avoids duplicate Qdrant chunks
+- saves embedding time
+- keeps document registry and vector store aligned
+
+### 2. Use Token-Based Chunking During Ingestion
+
+Replace `TextSplitter` usage in `IngestionWorker` with `token_chunker`:
+
 ```python
-# Enable Write-Ahead Logging for 3x faster writes
-conn.execute("PRAGMA journal_mode=WAL")
-conn.execute("PRAGMA synchronous=NORMAL")
-conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
-```
-**Impact:** 70% reduction in SQLite queries during session switching.
-
-#### 2. **FTS5 Full-Text Search**
-```sql
-CREATE VIRTUAL TABLE sessions_fts USING fts5(title, content);
-```
-**Impact:** Instant search across 1000+ chat sessions.
-
-#### 3. **Conversation Context Management**
-- **Current Issue:** Unlimited conversation history causes OOM with long chats.
-- **Solution:** Implement sliding window (keep last 10 messages + system prompt).
-```python
-def trim_conversation(history, max_messages=10):
-    if len(history) <= max_messages:
-        return history
-    # Keep system prompt + last N messages
-    return [history[0]] + history[-max_messages:]
-```
-**Impact:** Prevents context overflow, enables 100+ turn conversations.
-
-#### 4. **Async Embedding Generation**
-Currently embeddings are synchronous. For large document batches:
-```python
-async def embed_documents_async(texts: List[str]) -> List[List[float]]:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, model.encode, texts)
-```
-**Impact:** 30% faster ingestion for large PDFs.
-
----
-
-### Phase 4 Priorities
-
-#### 1. **Hybrid Search (FAISS + BM25)**
-Add keyword-based BM25 ranking alongside semantic search:
-```python
-from rank_bm25 import BM25Okapi
-
-# Combine semantic + keyword matching
-semantic_results = qdrant.search(query)
-bm25_results = bm25.get_top_n(query)
-final_results = merge_and_rerank(semantic_results, bm25_results)
-```
-**Impact:** 15-20% better retrieval accuracy, especially for exact phrase matches.
-
-#### 2. **Chunk Size Optimization**
-- **Current:** 512 chars, 50 overlap
-- **Recommendation:** Use **token-based chunking** (not character-based):
-```python
-from transformers import AutoTokenizer
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-3B-Instruct")
-
-def chunk_by_tokens(text, chunk_size=256, overlap=50):
-    tokens = tokenizer.encode(text)
-    chunks = []
-    for i in range(0, len(tokens), chunk_size - overlap):
-        chunk_tokens = tokens[i:i + chunk_size]
-        chunks.append(tokenizer.decode(chunk_tokens))
-    return chunks
-```
-**Impact:** Better alignment with LLM context window, avoids mid-sentence cuts.
-
-#### 3. **Smart Context Truncation**
-When retrieved context exceeds max_tokens:
-```python
-def truncate_context_smart(chunks, max_tokens=1500):
-    # Prioritize highest-scoring chunks
-    sorted_chunks = sorted(chunks, key=lambda x: x['score'], reverse=True)
-    
-    total_tokens = 0
-    selected = []
-    for chunk in sorted_chunks:
-        chunk_tokens = len(tokenizer.encode(chunk['text']))
-        if total_tokens + chunk_tokens <= max_tokens:
-            selected.append(chunk)
-            total_tokens += chunk_tokens
-        else:
-            break
-    return selected
-```
-**Impact:** Prevents prompt overflow, maximizes relevant context.
-
-#### 4. **Model Quantization Upgrade (GPTQ → AWQ Marlin)**
-You're already using AWQ Marlin! This is optimal. No change needed.
-
-#### 5. **Context Caching (vLLM Automatic Prefix Caching)**
-Enable vLLM's prefix caching to reuse KV cache for repeated system prompts:
-```python
-LLM(
-    model="Qwen/Qwen2.5-3B-Instruct-AWQ",
-    enable_prefix_caching=True  # ← Add this
-)
-```
-**Impact:** 40% faster responses when system prompt + RAG context repeats.
-
-#### 6. **Batch Embedding for Large Ingestions**
-```python
-def embed_in_batches(texts, batch_size=32):
-    embeddings = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
-        embeddings.extend(model.encode(batch))
-    return embeddings
-```
-**Impact:** 50% faster for documents with 100+ chunks.
-
----
-
-## 🎯 Performance Targets
-
-| Metric | Current | Optimized | 
-|--------|---------|-----------|
-| **VRAM Usage** | ~3.1GB | ~3.1GB (already optimal) |
-| **RAG Latency** | ~200ms | ~150ms (with async + caching) |
-| **Ingestion Speed** | ~10 pages/sec | ~15 pages/sec (with batching) |
-| **Session Switch** | N/A | <100ms (with WAL + FTS5) |
-| **Search Accuracy** | ~75% | ~85% (with hybrid search) |
-
----
-
-## 🛡️ Reliability Improvements
-
-### 1. **Qdrant Lock File Recovery**
-```python
-def init_qdrant_safe():
-    try:
-        client = QdrantClient(path=db_path)
-    except Exception as e:
-        if "lock" in str(e).lower():
-            # Remove stale lock file
-            lock_file = Path(db_path) / "LOCK"
-            if lock_file.exists():
-                lock_file.unlink()
-            client = QdrantClient(path=db_path)
+chunks = token_chunker.chunk_by_tokens(text, chunk_size=256, overlap=50)
 ```
 
-### 2. **Graceful Model Loading Failure**
-Add fallback to smaller model or CPU inference:
-```python
-try:
-    llm = LLM(model="Qwen/Qwen2.5-3B-Instruct-AWQ", ...)
-except OutOfMemoryError:
-    print("Falling back to CPU inference...")
-    llm = LLM(model="Qwen/Qwen2.5-3B-Instruct-AWQ", device="cpu")
+Impact:
+
+- more predictable context usage
+- better alignment with LLM token budget
+- easier chunk-size tuning by model context length
+
+### 3. Persist Session Rename
+
+`SessionSidebar._rename_session()` currently makes the item editable but does
+not write the new title back to SQLite. Add an `itemChanged` handler and a
+session-manager method or reuse `update_session()`.
+
+### 4. Add Focused Tests
+
+Priority tests:
+
+- `trim_conversation()`
+- `SessionManager` CRUD and FTS search
+- duplicate detection before ingestion
+- `RetrievalService` strategies
+- context truncation budget
+- vector-store filename filtering
+
+### 5. True vLLM Streaming
+
+If you want real token streaming rather than UI chunking, investigate the
+currently supported vLLM async/streaming API for the installed vLLM version and
+adapt the service around that API.
+
+## Tuning Suggestions
+
+### Lower VRAM
+
+Reduce:
+
+- `max_model_len`
+- `max_tokens`
+- `gpu_memory_utilization`
+
+Increase only if needed:
+
+- `cpu_offload_gb`
+
+### Faster RAG
+
+- Lower `top_k`.
+- Disable hybrid reranking for speed-sensitive cases.
+- Use `explicit` or `smart` RAG strategy instead of `always`.
+
+### More Accurate RAG
+
+- Keep hybrid search enabled.
+- Improve ingestion chunking.
+- Add page-aware PDF metadata.
+- Add a reranker as a later second-stage retrieval step.
+
+## Useful Commands
+
+```bash
+# UI only
+uv run python run.py --mock --dev
+
+# Real model
+uv run python run.py --dev
+
+# Tests
+uv run pytest
+
+# GPU watch
+watch -n 1 nvidia-smi
+
+# Build
+uv run python build.py
 ```
 
-### 3. **Auto-Backup Qdrant**
-```python
-def backup_qdrant():
-    shutil.copytree("data/qdrant_db", f"data/qdrant_db.backup.{timestamp}")
-```
+## Current Strengths
 
----
-
-## 📊 Monitoring & Telemetry
-
-### Add Performance Metrics
-```python
-import time
-
-class PerformanceMonitor:
-    def __init__(self):
-        self.metrics = {}
-    
-    def track(self, operation):
-        start = time.time()
-        yield
-        duration = time.time() - start
-        self.metrics[operation] = duration
-
-# Usage
-with perf_monitor.track("rag_retrieval"):
-    results = vector_store.search(query)
-```
-
-### Display in UI
-- Average query time (last 10 queries)
-- Cache hit rate
-- Token throughput (tokens/sec)
-
----
-
-## 🎨 UI/UX Enhancements
-
-### 1. **Progressive RAG Indicator**
-```python
-# Show "🔍 Searching..." → "📚 Found 5 sources..." → "💬 Generating..."
-```
-
-### 2. **Document Preview on Hover**
-In Knowledge Base dialog, show first 200 chars of document on hover.
-
-### 3. **Keyboard Shortcuts**
-- `Ctrl+K`: Open Knowledge Base
-- `Ctrl+N`: New Chat
-- `Ctrl+L`: Clear Chat
-- `Ctrl+/`: Toggle RAG on/off
-
----
-
-## 🚨 Critical Issues to Address
-
-### 1. **Memory Leak in Long Chats**
-**Problem:** Conversation history grows unbounded.  
-**Solution:** Implement sliding window (see above).
-
-### 2. **No RAG Toggle**
-**Problem:** Users can't disable RAG for creative tasks.  
-**Solution:** Add checkbox in UI or `/norag` command.
-
-### 3. **No Duplicate Document Detection**
-**Problem:** Re-uploading same file creates duplicates.  
-**Solution:** Hash files and check before ingestion.
-
----
-
-## 💡 Advanced Features (Phase 5+)
-
-1. **Multi-Modal Support**: Add vision model for image analysis (Qwen2-VL).
-2. **Agent Workflow**: Integrate LangGraph for multi-step reasoning.
-3. **Reranker**: Add cross-encoder reranking (ms-marco-MiniLM) for +10% accuracy.
-4. **Export Chats**: Export to Markdown/PDF with sources.
-5. **Cloud Sync**: Optional encrypted backup to personal cloud storage.
-
----
-
-## 🏆 Your App's Strengths
-
-1. **Privacy-First**: 100% local, no telemetry.
-2. **Low VRAM**: Runs on 4GB GPUs (GTX 1650, RTX 3050).
-3. **Fast Iteration**: `uv` package manager is 10x faster than pip.
-4. **Production-Ready Stack**: vLLM + Qdrant + PyQt6 are all battle-tested.
-5. **Developer-Friendly**: Hot-reload QSS, mock mode, clear code structure.
-
----
-
-## 📝 Conclusion
-
-Your architecture is **already excellent** for a local LLM chat app. The biggest wins will come from:
-1. **Phase 3**: Session management (SQLite WAL + FTS5)
-2. **Phase 4**: Hybrid search (BM25 + semantic) and context caching
-
-You're on the right track! 🚀
+- Fully local app architecture.
+- Practical model choice for consumer GPUs.
+- CPU embeddings preserve GPU memory for generation.
+- Qdrant local mode avoids a separate vector DB service.
+- SQLite keeps sessions simple and portable.
+- Mock mode makes UI development possible without loading the LLM.

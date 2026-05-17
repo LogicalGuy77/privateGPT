@@ -131,7 +131,7 @@ A dedicated widget for session management with search and CRUD operations.
 - **New Chat Button** - Creates new session instantly
 - **FTS5 Search Bar** - Real-time search as you type
 - **Session List** - Recent sessions with timestamps
-- **Context Menu** - Right-click to rename/delete
+- **Context Menu** - Right-click delete works; rename UI is currently partial
 - **Session Switching** - Click to load session (<100ms)
 - **Current Session Highlight** - Bold text for active session
 
@@ -285,9 +285,15 @@ LLM(
    - FTS5 filters sessions in real-time
    - Displays matching sessions sorted by rank
 
+Rename caveat: the current sidebar exposes a Rename action, but it only makes
+the list item editable. It does not persist the edited title back to SQLite yet.
+
 ---
 
 ## Performance Benchmarks
+
+These numbers are design targets/observations from development notes, not
+currently enforced by automated benchmark tests in this repo.
 
 ### Session Operations
 
@@ -556,15 +562,10 @@ print('✅ All tests passed')
 
 ## Future Enhancements (Phase 4)
 
-### Hybrid Search (BM25 + Semantic)
+### Session Rename Persistence
 
-**Current:** FTS5 keyword search for sessions
-**Planned:** Combine FTS5 with semantic embeddings
-
-**Benefits:**
-- Better relevance ranking
-- Handles typos and synonyms
-- Cross-lingual search
+**Current:** Rename makes the list item editable.
+**Planned:** Persist edited titles back to SQLite.
 
 ### Export/Import Sessions
 
@@ -616,12 +617,12 @@ Phase 3 transforms Private-GPT from a basic chat app into a production-ready con
 - ✅ **User controls** (RAG toggle, session management)
 
 **Next Steps:**
-- Phase 4: Hybrid search, packaging, additional optimizations
-- Production deployment with Nuitka
-- User feedback and iteration
+- Persist session rename.
+- Add focused automated tests for session CRUD/search.
+- Keep packaging aligned with the current PyInstaller build path.
 
 **Metrics:**
-- Session switching: <100ms
-- FTS5 search: <50ms
-- VRAM savings: -150 MB (trimming)
-- Response speedup: +40% (prefix caching)
+- Session switching target: <100ms
+- FTS5 search target: <50ms
+- Sliding-window trimming reduces long-chat context pressure
+- Prefix caching is enabled in vLLM, but speedup depends on prompt reuse

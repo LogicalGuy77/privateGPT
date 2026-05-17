@@ -1,206 +1,227 @@
 # Private-GPT Desktop App
 
-A local, privacy-focused desktop chat application powered by Qwen2.5-3B-Instruct-AWQ with vLLM acceleration.
+A local, privacy-focused desktop chat application powered by
+`Qwen/Qwen2.5-3B-Instruct-AWQ`, vLLM, PyQt6, and a local Qdrant-based RAG
+pipeline.
 
 Blog: https://medium.com/@harshitweb3/building-a-fully-private-gpt-549c0935d307
-Download zip: https://mega.nz/file/L4RSDbqI#RbjqmLsRxVCZwUrwYBqh76VDXwODw5DkcGvuOuNIUU8
 
 ## Features
 
-- 🔒 **100% Local & Private** - All data stays on your machine
-- 💬 **Chat Interface** - Modern PyQt6-based UI with real-time token streaming
-- 🚀 **Powered by vLLM** - AWQ Marlin quantization for maximum efficiency
-- 🎯 **Low VRAM Optimized** - Runs on 4GB+ VRAM GPUs
-- 📜 **2K-6k Context Window** - Balanced performance for low-end hardware
-- ⚡ **Fast Generation** - 66-378 tokens/sec on RTX 5060 Laptop
-- 🤖 **Apache 2.0 Licensed Model** - Commercial use ready
+- 100% local chat: conversations and documents stay on your machine.
+- PyQt6 desktop UI with sessions, searchable history, settings, and a knowledge base.
+- Local vLLM inference with AWQ Marlin quantization.
+- RAG over PDF, DOCX, TXT, and Markdown files.
+- Qdrant local vector store plus BM25 hybrid reranking.
+- CPU embeddings to keep GPU VRAM available for the LLM.
+- Crash recovery, VRAM monitoring, and performance stats.
+- Mock mode for UI testing without loading the main LLM.
 
-<img width="1350" height="899" alt="image" src="https://github.com/user-attachments/assets/02eb4e9e-4506-4a3a-aee8-6fbc29e197cb" />
+## Current Models
 
-__________________________________________________________________________________
-<img width="1189" height="814" alt="image" src="https://github.com/user-attachments/assets/76728bc6-bc5b-4db2-85e5-8b2fed4dcc46" />
+| Purpose | Model | Where It Runs |
+| --- | --- | --- |
+| Chat / generation | `Qwen/Qwen2.5-3B-Instruct-AWQ` | NVIDIA GPU through vLLM |
+| Embeddings / RAG | `sentence-transformers/all-MiniLM-L6-v2` | CPU |
 
-## Prerequisites
+The embedding model may download on first use even in `--mock` mode, because the
+RAG stack is still initialized. Mock mode skips the main Qwen/vLLM model.
 
-- **Hardware:**
-  - NVIDIA GPU with 4GB+ VRAM (GTX 1650, RTX 3050, RTX 4060, RTX 5060, etc.)
-  - CUDA-capable drivers (vLLM bundles CUDA runtime)
-  - 8GB+ system RAM
-  - 5GB disk space for model
+## Requirements
 
-- **Software:**
-  - Python 3.10+
-  - Linux (tested on Ubuntu 22.04+)
-  - NVIDIA drivers 525+ (for CUDA 12 support)
+- Linux desktop environment, tested on Ubuntu-style systems.
+- Python 3.10+.
+- NVIDIA GPU with CUDA support for real model mode.
+- 6GB+ VRAM is the current runtime validation threshold.
+- 8GB+ VRAM is recommended for the current default 4096-token model context.
+- Docker is not required. The app uses your NVIDIA GPU directly through PyTorch/vLLM.
+
+The code contains settings that can be tuned down for 4GB GPUs, but the current
+startup check warns below 6GB VRAM.
 
 ## Quick Start
 
-### 1. Install Dependencies
+From this repo:
 
 ```bash
-cd /home/harshit/coding/private-gpt/private-gpt-app
-
-# Install all dependencies
+cd ~/coding/private-gpt/privateGPT
 uv sync
 ```
 
-### 2. Run the Application
+If `uv` is not installed:
 
 ```bash
-# Run the application
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Start with mock mode:
+
+```bash
+uv run python run.py --mock --dev
+```
+
+Run the real local model:
+
+```bash
+uv run python run.py --dev
+```
+
+You can monitor GPU usage in another terminal:
+
+```bash
+watch -n 1 nvidia-smi
+```
+
+## Runtime Behavior
+
+On startup the app:
+
+1. Cleans stale vLLM GPU processes from previous crashes.
+2. Creates a PyQt6 + qasync event loop.
+3. Loads `styles_modern.qss` when available.
+4. Creates the main window and session sidebar.
+5. Checks GPU requirements in real model mode.
+6. Loads Qwen through vLLM after the UI appears.
+7. Initializes local RAG components lazily as needed.
+
+The UI displays streamed chunks, but vLLM generation is currently performed as a
+single synchronous call in an executor and then split into small chunks for the
+chat display. So it behaves like streaming in the UI, but it is not true token
+streaming from vLLM yet.
+
+## Main Commands
+
+```bash
+# UI smoke test, no main LLM load
+uv run python run.py --mock --dev
+
+# Real model mode
 uv run python run.py --dev
 
-# Or without dev mode
-uv run python run.py
+# Run tests
+uv run pytest
+
+# Build packaged app with PyInstaller
+uv run python build.py
 ```
-
-### 3. First Run
-
-On first launch, the app will:
-1. Check your GPU (4GB VRAM minimum)
-2. Auto-download Qwen2.5-3B-Instruct-AWQ from HuggingFace (~2.7GB)
-3. Load model with vLLM using AWQ Marlin kernels
-4. Ready to chat!
-
-**Model Info:**
-- Model: Qwen/Qwen2.5-3B-Instruct-AWQ (Apache 2.0 license)
-- Size: 2.7GB download, 1.93GB loaded
-- Context: 2048 tokens (~1500 words)
-- VRAM Usage: ~3.1GB total (model + KV cache)
-- Automatically cached in `models/Qwen2.5-3B-Instruct-AWQ/`
-
-## Usage
-
-### Chat Interface
-
-The app provides a clean chat interface with:
-- Real-time token streaming
-- Message bubbles with user/assistant distinction
-- Auto-scrolling to latest messages
-- Responsive PyQt6 design
-
-### Performance Tuning
-
-Edit `src/private_gpt_app/ui/main_window.py` to adjust VRAM/context trade-offs:
-
-```python
-VLLMService(
-    gpu_memory_utilization=0.55,  # 4GB VRAM: 0.55 | 6GB: 0.65 | 8GB+: 0.70
-    max_model_len=2048,            # 4GB VRAM: 2048 | 6GB: 3072 | 8GB+: 4096
-    cpu_offload_gb=2.0,            # Offload 2GB to system RAM for headroom
-)
-```
-
-**GPU Compatibility Matrix:**
-- **4GB VRAM** (GTX 1650, RTX 3050 4GB): 0.55 utilization, 2K context
-- **6GB VRAM** (RTX 3060 Mobile, RTX 2060): 0.65 utilization, 3K context
-- **8GB+ VRAM** (RTX 3070, RTX 4060, RTX 5060): 0.70 utilization, 4K context
 
 ## Project Structure
 
-```
-private-gpt-app/
+```text
+privateGPT/
+├── run.py                         # Dev-friendly entrypoint
+├── build.py                       # PyInstaller build script
 ├── src/private_gpt_app/
-│   ├── ui/              # PyQt6 interface (main_window, chat_widget, message_bubble)
-│   ├── backend/         # vLLM service with AWQ quantization
-│   └── utils/           # GPU monitoring
+│   ├── main.py                    # Real application entrypoint
+│   ├── ui/                        # PyQt6 windows, dialogs, widgets, styles
+│   ├── backend/                   # vLLM, sessions, retrieval router, document DB
+│   ├── rag/                       # Qdrant, embeddings, ingestion, hybrid search
+│   └── utils/                     # GPU, paths, setup, performance, crash recovery
 ├── data/
-│   ├── faiss_index/     # (Future) Local vector database
-│   └── crash_recovery/  # (Future) Auto-save temp files
+│   ├── qdrant_db/                 # Local Qdrant vector database
+│   ├── documents.db               # Document registry
+│   ├── sessions.db                # Chat sessions, created at runtime
+│   └── crash_recovery/            # Recovery files
 ├── models/
-│   └── Qwen2.5-3B-Instruct-AWQ/  # Downloaded model files
-└── docs/                # Documentation
+│   └── Qwen2.5-3B-Instruct-AWQ/   # Optional bundled/local model directory
+└── docs/
 ```
 
-## Development
+## RAG Flow
 
-### Running Tests
+1. Add files through `Tools > Knowledge Base`.
+2. `IngestionWorker` extracts text from PDF, DOCX, TXT, or MD.
+3. Text is split with the current character-based `TextSplitter`.
+4. Chunks are embedded on CPU with `all-MiniLM-L6-v2`.
+5. Chunks are stored in local Qdrant with source metadata.
+6. The document registry is stored in SQLite.
+7. On a query, `RetrievalService` searches Qdrant, optionally reranks with BM25,
+   truncates context by token budget, and injects the context into the latest
+   user message before vLLM generation.
 
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=private_gpt_app
-```
-
-### Hot Reload (QSS Styles)
-
-When running in development mode, QSS stylesheets auto-reload on file changes.
-
-### Memory Profiling
-
-```bash
-# Profile VRAM usage
-uv run python -m memory_profiler src/private_gpt_app/main.py
-```
+Note: token-based utilities exist in `rag/chunking.py` and are used for context
+counting/truncation. Ingestion still uses the character-based splitter.
 
 ## Configuration
 
-### VRAM Optimization
-
-The app is currently configured for maximum compatibility (4GB+ VRAM).
-
-To adjust for your specific GPU, edit `src/private_gpt_app/ui/main_window.py`:
+Default runtime settings are in `MainWindow.current_settings`:
 
 ```python
-# 4GB VRAM (current default)
-gpu_memory_utilization=0.55
-max_model_len=2048
-
-# 6GB VRAM (recommended for better context)
-gpu_memory_utilization=0.65
-max_model_len=3072
-
-# 8GB+ VRAM (optimal performance)
-gpu_memory_utilization=0.70
-max_model_len=4096
+{
+    "gpu_memory_utilization": 0.55,
+    "max_model_len": 4096,
+    "cpu_offload_gb": 2.0,
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "max_tokens": 1024,
+    "rag_strategy": "always",
+    "relevance_threshold": 0.5,
+}
 ```
 
-**Trade-offs:**
-- Lower utilization = more stable, less risk of OOM
-- Higher context = better conversation memory, more VRAM usage
+The settings dialog can adjust generation and RAG settings. Model memory settings
+are applied when the model service is created, so restart the app after changing
+them if you need a clean model reload.
 
 ## Troubleshooting
 
-### Low VRAM Error
+### `uv` Not Found
 
-If you see OOM (Out of Memory) errors:
+Install uv:
 
-1. Reduce `gpu_memory_utilization` from 0.55 to 0.50
-2. Reduce `max_model_len` from 2048 to 1536
-3. Increase `cpu_offload_gb` from 2.0 to 3.0
-4. Close other GPU applications (Chrome, games, etc.)
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
-Check current GPU usage:
+### CUDA / GPU Check
+
 ```bash
 nvidia-smi
+uv run python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
 ```
 
-### Model Download Failed
+### Low VRAM or OOM
 
-Model auto-downloads from HuggingFace on first run. If interrupted:
-1. Delete `models/Qwen2.5-3B-Instruct-AWQ/`
-2. Restart the app - download will resume
+Try lowering:
 
-### Lingering Processes
+- `gpu_memory_utilization`
+- `max_model_len`
+- `max_tokens`
 
-If the app crashes and GPU is still occupied:
+Also close other GPU-heavy applications.
+
+### Model Download
+
+If no bundled model exists under `models/Qwen2.5-3B-Instruct-AWQ/`, vLLM will use
+the HuggingFace model ID and download/cache through the normal HuggingFace cache.
+
+### Qdrant or RAG Issues
+
+The local vector database lives in `data/qdrant_db`. The document list is tracked
+separately in `data/documents.db`.
+
+## Packaging
+
+This repo currently packages with PyInstaller:
+
 ```bash
-pkill -9 -f "python.*run.py"
+uv run python build.py
 ```
 
-### UI Freezing
+The build expects a local model at:
 
-Ensure qasync is properly initialized. Check terminal output for vLLM errors.
+```text
+models/Qwen2.5-3B-Instruct-AWQ/
+```
 
-## License
+with required files such as `config.json`, `model.safetensors`, and
+`tokenizer.json`.
 
-MIT License - See LICENSE file for details
+## Notes
 
-## Acknowledgments
-
-- Qwen team for the efficient 3B Instruct model
-- vLLM team for the high-performance inference engine
-- AWQ team for the quantization method
-- PyQt6 for the cross-platform UI framework
+- `src/private_gpt_app/main.py` is the real app entrypoint.
+- The root `main.py` is not the desktop app entrypoint.
+- `main_broken.py`, if present in older checkouts, is a stale backup and is not
+  referenced by the current run/build path.

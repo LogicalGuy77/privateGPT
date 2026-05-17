@@ -1,76 +1,144 @@
-# Private-GPT UI Testing Guide
+# Private-GPT Testing Guide
 
-## Running the Application
+This guide reflects the current PyQt6 desktop app.
 
-### Mock Mode (No Model Loading)
+## Smoke Test: Mock Mode
+
+Mock mode skips the main Qwen/vLLM model and uses fake assistant responses. It
+may still initialize Qdrant and download/load the CPU embedding model because the
+RAG stack is imported by the UI.
+
 ```bash
-cd /home/harshit/coding/private-gpt/private-gpt-app
-PYTHONPATH=src uv run python -m private_gpt_app.main --mock --dev
+cd ~/coding/private-gpt/privateGPT
+uv sync
+uv run python run.py --mock --dev
 ```
 
-### Testing Checklist
+Expected terminal output includes:
 
-✅ **Application Startup**
-- Window opens with "Private-GPT" title
-- Sidebar visible on the left (250-400px wide)
-- Chat area visible on the right
-- Input area at the bottom
+- `Running in MOCK mode`
+- `Development mode enabled`
+- `Loaded stylesheet: styles_modern.qss`
+- `Hot-reload enabled for QSS`
 
-✅ **UI Components**
-- Sidebar shows "Chat History" header
-- "+ New Chat" button present
-- Session list shows placeholder sessions
-- Status label at bottom of sidebar
+Expected UI behavior:
 
-✅ **Chat Area**
-- Welcome message displayed initially
-- Input field with placeholder text
-- "🎭 Mock Mode" indicator visible
-- "Clear" and "Send" buttons present
+- Window opens with title `Private-GPT`.
+- Left sidebar contains New Chat, session search/list, Knowledge Base, RAG toggle,
+  VRAM/status labels, and Settings.
+- Chat area shows the welcome message.
+- Message input, Attach, Clear, and Send controls are visible.
+- Sending a message returns a mock response with incremental UI updates.
 
-✅ **Interaction Tests**
-1. **Type and Send:**
-   - Type a message in the input field
-   - Click "Send" or press Ctrl+Enter
-   - User message appears as blue bubble on the right
-   - Mock response appears as dark gray bubble on the left (with streaming effect)
+## Real Model Test
 
-2. **Token Streaming:**
-   - Watch the mock response appear character-by-character
-   - Markdown formatting should render after streaming completes
+Use this after mock mode works:
 
-3. **Clear Button:**
-   - Type text in input
-   - Click "Clear"
-   - Input should empty
+```bash
+uv run python run.py --dev
+```
 
-4. **New Chat:**
-   - Send a few messages
-   - Click "+ New Chat"
-   - Chat area clears and shows welcome message again
+Before running, verify GPU access:
 
-5. **Hot Reload (Dev Mode):**
-   - Edit `src/private_gpt_app/ui/styles.qss`
-   - Save the file
-   - Stylesheet should reload automatically
-   - Console should show "🔄 Reloaded stylesheet"
+```bash
+nvidia-smi
+uv run python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
+```
 
-✅ **Visual Verification**
-- Background: Deep black (#0A0A0A)
-- Sidebar: Charcoal grey (#1A1A1A)
-- User bubbles: Blue (#2563EB)
-- Assistant bubbles: Dark grey (#1A1A1A) with border
-- Text: High contrast white/off-white
-- Smooth scrolling in chat area
+Expected behavior:
 
-## Known Issues to Fix Later
-- [ ] Message bubble height auto-adjustment needs refinement
-- [ ] Keyboard shortcuts (Ctrl+N for new chat) not yet implemented
-- [ ] Session persistence not yet implemented
-- [ ] Markdown code blocks need syntax highlighting
+- GPU check runs.
+- Qwen2.5-3B-Instruct-AWQ loads through vLLM.
+- Status changes to model ready.
+- `nvidia-smi` shows Python/vLLM using VRAM.
 
-## Next Steps (Phase 1 Continued)
-- [ ] Integrate llama.cpp with lazy loading
-- [ ] Add GPU detection and VRAM validation
-- [ ] Implement actual token streaming from LLM
-- [ ] Add crash recovery auto-save
+## Manual Checklist
+
+### Chat
+
+- Send with the Send button.
+- Send with `Ctrl+Enter`.
+- Clear input with Clear.
+- Start a new chat with `Ctrl+N`.
+- Confirm session appears in sidebar.
+- Switch sessions and verify messages reload.
+
+### RAG
+
+1. Open `Tools > Knowledge Base` or press `Ctrl+K`.
+2. Add a small `.txt`, `.md`, `.pdf`, or `.docx` file.
+3. Confirm the document appears in the list.
+4. Ask a question about the document.
+5. Confirm the response includes source citation text when RAG is used.
+6. Toggle RAG off and confirm future queries skip retrieval.
+
+### Attachments
+
+1. Click Attach.
+2. Select one or more knowledge-base files.
+3. Ask a question.
+4. Confirm the RAG label shows selected source files.
+5. Confirm file selection clears after the response.
+
+### Settings
+
+- Open Settings.
+- Change generation settings.
+- Change RAG strategy:
+  - Always
+  - Smart
+  - Explicit Only
+- Confirm RAG settings apply immediately.
+- Restart app after changing model memory settings if you need a clean model reload.
+
+### Performance Stats
+
+1. Send a RAG query.
+2. Open `Tools > Performance Stats`.
+3. Confirm retrieval/search metrics appear after usage.
+
+### Crash Recovery
+
+Crash recovery files live under `data/crash_recovery/`. A clean window close
+ends the recovery session. Unexpected termination should leave recoverable data
+for the next launch.
+
+## Development Notes
+
+### Stylesheet Hot Reload
+
+With `--dev`, the loaded stylesheet reloads when modified. The app prefers:
+
+```text
+src/private_gpt_app/ui/styles_modern.qss
+```
+
+and falls back to:
+
+```text
+src/private_gpt_app/ui/styles.qss
+```
+
+### Automated Tests
+
+The current repo has minimal test files. Run:
+
+```bash
+uv run pytest
+```
+
+This is currently more of an environment sanity check than a comprehensive test
+suite.
+
+### Useful One-Off Checks
+
+```bash
+# Import check
+uv run python -c "from private_gpt_app.backend.vllm_service import VLLMService; print('ok')"
+
+# GPU check
+uv run python -c "import torch; print(torch.cuda.is_available())"
+
+# Qdrant/vector store check
+uv run python -c "from private_gpt_app.rag.vector_store import vector_store; print(vector_store.collection_name)"
+```

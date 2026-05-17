@@ -1,45 +1,37 @@
-# Private-GPT Icon
+# Private-GPT Assets
 
-This directory should contain the application icon for building the executable and installer.
+This directory is reserved for application assets such as icons and screenshots.
 
-## Required File
+## Current Build Path
 
-- **icon.ico**: Windows icon file (256x256 recommended, with multiple sizes embedded)
-
-## Creating an Icon
-
-### From PNG/SVG
-
-Use an online converter or tools like:
+The current repository builds with PyInstaller through:
 
 ```bash
-# Using ImageMagick
-convert logo.png -define icon:auto-resize=256,128,64,48,32,16 icon.ico
-
-# Using GIMP
-File → Export As → icon.ico
+uv run python build.py
 ```
 
-### Icon Requirements
+At the moment, `build.py` and `PrivateGPT.spec` do not require an icon file.
 
-- **Format**: ICO (Windows Icon)
-- **Sizes**: 16x16, 32x32, 48x48, 256x256 (embedded in one file)
-- **Transparency**: Supported (recommended)
+## Optional Icon
 
-### Temporary Solution
+If you add icon support later, place a Windows icon here:
 
-If you don't have an icon yet, the build will work without it (default icon will be used).
+```text
+assets/icon.ico
+```
 
-## Icon Locations
+Recommended embedded sizes:
 
-The icon is used in:
-1. **Executable**: `build_exe.py` → `--windows-icon-from-ico=assets/icon.ico`
-2. **Installer**: `installer/setup.iss` → `SetupIconFile=..\assets\icon.ico`
-3. **Shortcuts**: Desktop and Start Menu shortcuts
+- 16x16
+- 32x32
+- 48x48
+- 256x256
 
-## Design Tips
+Example conversion with ImageMagick:
 
-- Simple, recognizable design
-- High contrast for visibility at small sizes
-- Represents "privacy" and "AI" concepts
-- Use brand colors consistently
+```bash
+convert logo.png -define icon:auto-resize=256,128,64,48,32,16 assets/icon.ico
+```
+
+After adding an icon, update the PyInstaller command in `build.py` and/or
+`PrivateGPT.spec` to include it.
