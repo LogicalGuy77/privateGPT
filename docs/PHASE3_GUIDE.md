@@ -223,7 +223,7 @@ self.rag_toggle_btn.clicked.connect(self.toggle_rag)
 **Code Change:**
 ```python
 LLM(
-    model="Qwen/Qwen2.5-3B-Instruct-AWQ",
+    model="Qwen/Qwen2.5-1.5B-Instruct-AWQ",
     enable_prefix_caching=True,  # ← Added
     ...
 )

@@ -33,7 +33,7 @@ class MainWindow(QMainWindow):
     def __init__(self, mock_mode: bool = False, model_path: str = None):
         super().__init__()
         self.mock_mode = mock_mode
-        self.model_path = model_path or "Qwen/Qwen2.5-3B-Instruct-AWQ"
+        self.model_path = model_path or "Qwen/Qwen2.5-1.5B-Instruct-AWQ"
         self.llm_service = None
         self.conversation_history = []
         self.gpu_info = None
@@ -42,11 +42,11 @@ class MainWindow(QMainWindow):
         self.selected_files = []  # Files selected for current query
         self.current_settings = {
             "gpu_memory_utilization": 0.55,
-            "max_model_len": 4096,
-            "cpu_offload_gb": 2.0,
+            "max_model_len": 3072,
+            "cpu_offload_gb": 1.0,
             "temperature": 0.7,
             "top_p": 0.95,
-            "max_tokens": 1024,
+            "max_tokens": 768,
             "rag_strategy": "always",
             "relevance_threshold": 0.5
         }
@@ -362,7 +362,7 @@ class MainWindow(QMainWindow):
         gpu_info = detect_gpu()
         print_gpu_info(gpu_info)
         
-        is_valid, message = validate_hardware_requirements(gpu_info, min_vram_gb=6.0)
+        is_valid, message = validate_hardware_requirements(gpu_info, min_vram_gb=4.0)
         
         if not is_valid:
             reply = QMessageBox.warning(
@@ -380,17 +380,17 @@ class MainWindow(QMainWindow):
             print(message)
     
     async def initialize_llm(self):
-        """Initialize the LLM service with Qwen2.5-3B-Instruct-AWQ."""
+        """Initialize the LLM service with Qwen2.5-1.5B-Instruct-AWQ."""
         if self.llm_service and self.llm_service.is_loaded:
             return
         
         # Show loading status
-        self.status_label.setText("🔄 Loading Qwen2.5-3B...")
+        self.status_label.setText("🔄 Loading Qwen2.5-1.5B...")
         self.send_btn.setEnabled(False)
         
         try:
-            # Initialize VLLMService with Qwen2.5-3B-Instruct-AWQ
-            # Apache 2.0 license - fully commercial, AWQ 4-bit quantized (~2.7GB)
+            # Initialize VLLMService with Qwen2.5-1.5B-Instruct-AWQ
+            # Apache 2.0 license - fully commercial, AWQ 4-bit quantized (~1.4GB)
             bundled_model = get_bundled_model_path()
             if bundled_model:
                 model_path = str(bundled_model)
@@ -414,15 +414,15 @@ class MainWindow(QMainWindow):
             
             self.status_label.setText("✅ Model ready")
             self.send_btn.setEnabled(True)
-            self.mode_label.setText("🤖 Qwen2.5-3B")
+            self.mode_label.setText("🤖 Qwen2.5-1.5B")
         
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "Model Load Failed",
-                f"Failed to load Qwen2.5-3B-Instruct-AWQ:\n\n{str(e)}\n\n"
+                f"Failed to load Qwen2.5-1.5B-Instruct-AWQ:\n\n{str(e)}\n\n"
                 "Make sure you have:\n"
-                "• CUDA-capable GPU with 6GB+ VRAM\n"
+                "• CUDA-capable GPU with 4GB+ VRAM\n"
                 "• Python packages: vllm, torch\n\n"
                 "Install with: uv pip install vllm"
             )
@@ -858,7 +858,7 @@ class MainWindow(QMainWindow):
             "<h2>Private-GPT</h2>"
             "<p>Version 0.2.0</p>"
             "<p>A local, privacy-focused desktop chat application<br>"
-            "powered by Qwen2.5-3B-Instruct-AWQ with vLLM acceleration.</p>"
+            "powered by Qwen2.5-1.5B-Instruct-AWQ with vLLM acceleration.</p>"
             "<p><b>Features:</b></p>"
             "<ul>"
             "<li>100% Local & Private</li>"

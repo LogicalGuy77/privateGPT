@@ -1,7 +1,7 @@
 # Private-GPT Desktop App
 
 A local, privacy-focused desktop chat application powered by
-`Qwen/Qwen2.5-3B-Instruct-AWQ`, vLLM, PyQt6, and a local Qdrant-based RAG
+`Qwen/Qwen2.5-1.5B-Instruct-AWQ`, vLLM, PyQt6, and a local Qdrant-based RAG
 pipeline.
 
 Blog: https://medium.com/@harshitweb3/building-a-fully-private-gpt-549c0935d307
@@ -21,7 +21,7 @@ Blog: https://medium.com/@harshitweb3/building-a-fully-private-gpt-549c0935d307
 
 | Purpose | Model | Where It Runs |
 | --- | --- | --- |
-| Chat / generation | `Qwen/Qwen2.5-3B-Instruct-AWQ` | NVIDIA GPU through vLLM |
+| Chat / generation | `Qwen/Qwen2.5-1.5B-Instruct-AWQ` | NVIDIA GPU through vLLM |
 | Embeddings / RAG | `sentence-transformers/all-MiniLM-L6-v2` | CPU |
 
 The embedding model may download on first use even in `--mock` mode, because the
@@ -32,12 +32,11 @@ RAG stack is still initialized. Mock mode skips the main Qwen/vLLM model.
 - Linux desktop environment, tested on Ubuntu-style systems.
 - Python 3.10+.
 - NVIDIA GPU with CUDA support for real model mode.
-- 6GB+ VRAM is the current runtime validation threshold.
-- 8GB+ VRAM is recommended for the current default 4096-token model context.
+- 4GB+ VRAM is the current runtime validation threshold for the 1.5B AWQ model.
+- 6GB+ VRAM is recommended for a smoother 3072-token default context.
 - Docker is not required. The app uses your NVIDIA GPU directly through PyTorch/vLLM.
 
-The code contains settings that can be tuned down for 4GB GPUs, but the current
-startup check warns below 6GB VRAM.
+The code is now tuned for the lighter 1.5B model by default.
 
 ## Quick Start
 
@@ -124,7 +123,7 @@ privateGPT/
 │   ├── sessions.db                # Chat sessions, created at runtime
 │   └── crash_recovery/            # Recovery files
 ├── models/
-│   └── Qwen2.5-3B-Instruct-AWQ/   # Optional bundled/local model directory
+│   └── Qwen2.5-1.5B-Instruct-AWQ/   # Optional bundled/local model directory
 └── docs/
 ```
 
@@ -150,11 +149,11 @@ Default runtime settings are in `MainWindow.current_settings`:
 ```python
 {
     "gpu_memory_utilization": 0.55,
-    "max_model_len": 4096,
-    "cpu_offload_gb": 2.0,
+    "max_model_len": 3072,
+    "cpu_offload_gb": 1.0,
     "temperature": 0.7,
     "top_p": 0.95,
-    "max_tokens": 1024,
+    "max_tokens": 768,
     "rag_strategy": "always",
     "relevance_threshold": 0.5,
 }
@@ -194,7 +193,7 @@ Also close other GPU-heavy applications.
 
 ### Model Download
 
-If no bundled model exists under `models/Qwen2.5-3B-Instruct-AWQ/`, vLLM will use
+If no bundled model exists under `models/Qwen2.5-1.5B-Instruct-AWQ/`, vLLM will use
 the HuggingFace model ID and download/cache through the normal HuggingFace cache.
 
 ### Qdrant or RAG Issues
@@ -213,7 +212,7 @@ uv run python build.py
 The build expects a local model at:
 
 ```text
-models/Qwen2.5-3B-Instruct-AWQ/
+models/Qwen2.5-1.5B-Instruct-AWQ/
 ```
 
 with required files such as `config.json`, `model.safetensors`, and

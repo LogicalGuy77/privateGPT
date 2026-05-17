@@ -1,4 +1,4 @@
-"""LLM service using vLLM for Qwen2.5 - optimized for 8GB VRAM."""
+"""LLM service using vLLM for Qwen2.5 - optimized for low-VRAM GPUs."""
 
 import asyncio
 import os
@@ -20,9 +20,9 @@ class GenerationConfig:
     """Configuration for text generation."""
     temperature: float = 0.7
     top_p: float = 0.95
-    max_tokens: int = 1024  # Reduced to leave room for input + RAG context
+    max_tokens: int = 768  # Reduced to leave room for input + RAG context
     system_prompt: str = (
-        "You are Private-GPT, a local AI assistant running Qwen2.5-3B-Instruct-AWQ with vLLM acceleration. "
+        "You are Private-GPT, a local AI assistant running Qwen2.5-1.5B-Instruct-AWQ with vLLM acceleration. "
         "You provide helpful, accurate responses while respecting user privacy—all processing happens locally. "
         "You have RAG capabilities via Qdrant vector store for document-grounded answers. "
         "Be concise, factual, and acknowledge when you lack context or knowledge."
@@ -30,15 +30,15 @@ class GenerationConfig:
 
 
 class VLLMService:
-    """Service for LLM inference using vLLM - optimized for 8GB VRAM GPUs."""
+    """Service for LLM inference using vLLM - optimized for low-VRAM GPUs."""
     
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen2.5-3B-Instruct-AWQ",
+        model_name: str = "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
         dtype: str = "float16",
         quantization: str = "awq_marlin",  # Efficient AWQ with Marlin kernels
         gpu_memory_utilization: float = 0.55,  # Works on 4GB+ VRAM GPUs
-        max_model_len: int = 4096,  # Increased for RAG context support
+        max_model_len: int = 3072,  # Balanced context for the 1.5B model
         max_num_seqs: int = 4,  # Limit concurrent sequences
         cpu_offload_gb: float = 0.0,  # CPU offload for extra headroom
         verbose: bool = False

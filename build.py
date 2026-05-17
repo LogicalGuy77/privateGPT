@@ -28,10 +28,10 @@ def clean_build():
 
 def verify_model_exists():
     """Check if model is available to bundle."""
-    model_path = Path("models/Qwen2.5-3B-Instruct-AWQ")
+    model_path = Path("models/Qwen2.5-1.5B-Instruct-AWQ")
     
     if not model_path.exists():
-        print("❌ Model not found at models/Qwen2.5-3B-Instruct-AWQ")
+        print("❌ Model not found at models/Qwen2.5-1.5B-Instruct-AWQ")
         print("Please ensure the model is downloaded first.")
         return False
     
@@ -49,7 +49,7 @@ def build():
     """Build with PyInstaller."""
     print("🔨 Building Private-GPT with PyInstaller...")
     print("⏱️  This will take 5-10 minutes...")
-    print("💾 Expected size: ~4-5GB (includes 2.6GB model)\n")
+    print("💾 Expected size: ~3-4GB (includes bundled 1.5B model)\n")
     
     if not verify_model_exists():
         print("\n❌ Build aborted - model not found")
@@ -86,7 +86,7 @@ def build():
         # Add data files
         f'--add-data=src/private_gpt_app/ui/styles.qss{separator}ui',
         f'--add-data=src/private_gpt_app/ui/styles_modern.qss{separator}ui',
-        f'--add-data=models/Qwen2.5-3B-Instruct-AWQ{separator}models/Qwen2.5-3B-Instruct-AWQ',
+        f'--add-data=models/Qwen2.5-1.5B-Instruct-AWQ{separator}models/Qwen2.5-1.5B-Instruct-AWQ',
         
         # Hidden imports (modules not auto-detected)
         '--hidden-import=vllm',

@@ -2,7 +2,7 @@
 from PyInstaller.utils.hooks import collect_all
 from PyInstaller.utils.hooks import copy_metadata
 
-datas = [('src/private_gpt_app/ui/styles.qss', 'ui'), ('src/private_gpt_app/ui/styles_modern.qss', 'ui'), ('models/Qwen2.5-3B-Instruct-AWQ', 'models/Qwen2.5-3B-Instruct-AWQ')]
+datas = [('src/private_gpt_app/ui/styles.qss', 'ui'), ('src/private_gpt_app/ui/styles_modern.qss', 'ui'), ('models/Qwen2.5-1.5B-Instruct-AWQ', 'models/Qwen2.5-1.5B-Instruct-AWQ')]
 binaries = [('/lib/x86_64-linux-gnu/libcuda.so.1', 'nvidia/cuda/lib'), ('/lib/x86_64-linux-gnu/libcuda.so', 'nvidia/cuda/lib')]
 hiddenimports = ['vllm', 'torch', 'PyQt6', 'qdrant_client', 'sentence_transformers', 'transformers', 'rank_bm25', 'unittest.mock', 'private_gpt_app.backend.vllm_service', 'private_gpt_app.backend.session_manager', 'private_gpt_app.backend.router', 'private_gpt_app.rag.vector_store', 'private_gpt_app.rag.embeddings']
 datas += copy_metadata('torch')

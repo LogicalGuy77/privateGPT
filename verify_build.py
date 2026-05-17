@@ -6,7 +6,7 @@ import importlib
 from pathlib import Path
 
 def test_imports():
-    """Test all critical imports that Nuitka will need."""
+    """Test all critical imports that PyInstaller will need."""
     print("🔍 Testing critical imports...\n")
     
     critical_modules = [
@@ -70,7 +70,7 @@ def test_model_files():
     """Verify model files exist."""
     print("\n🔍 Testing model files...\n")
     
-    model_path = Path("models/Qwen2.5-3B-Instruct-AWQ")
+    model_path = Path("models/Qwen2.5-1.5B-Instruct-AWQ")
     
     if not model_path.exists():
         print(f"❌ Model directory not found: {model_path}")
@@ -135,7 +135,7 @@ def test_tokenizer_load():
     try:
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
-            "models/Qwen2.5-3B-Instruct-AWQ",
+            "models/Qwen2.5-1.5B-Instruct-AWQ",
             trust_remote_code=True,
             local_files_only=True
         )

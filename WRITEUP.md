@@ -56,7 +56,7 @@ This is the hard lesson of AI engineering: **You need compute.** No amount of so
 
 I had to make a choice: continue fighting a losing battle with Nemotron, or pivot to a model that could actually deliver the *experience* I wanted to build.
 
-I chose **Qwen-2.5-3B-Instruct**.
+I chose **Qwen-2.5-1.5B-Instruct**.
 
 ### Why Qwen?
 *   **Size:** At 3 billion parameters, it sits in the "Goldilocks" zone for consumer hardware.
@@ -72,7 +72,7 @@ I stuck with **vLLM** but optimized it specifically for the 8GB VRAM constraint.
 *   **Quantization:** Used `awq_marlin` kernels. Marlin is a highly optimized FP16xINT4 matrix multiplication kernel that provides near-SOTA inference speeds.
 *   **Memory Tuning:**
     *   `gpu_memory_utilization=0.55`: Capped vLLM to use only 55% of the GPU. This leaves ~3.5GB for the OS and display drivers, preventing system freezes.
-    *   `max_model_len=4096`: Reduced context window to limit the KV cache size.
+    *   `max_model_len=3072`: Reduced context window to limit the KV cache size for the current 1.5B default.
     *   `PYTORCH_ALLOC_CONF="expandable_segments:True"`: Set this environment variable to handle memory fragmentation better.
 
 ### 2. The RAG Pipeline: Hybrid & CPU-Offloaded

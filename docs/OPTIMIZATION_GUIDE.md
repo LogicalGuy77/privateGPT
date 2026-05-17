@@ -7,13 +7,13 @@ changes for Private-GPT.
 
 ### Inference
 
-- Main model: `Qwen/Qwen2.5-3B-Instruct-AWQ`
+- Main model: `Qwen/Qwen2.5-1.5B-Instruct-AWQ`
 - Runtime: vLLM
 - Quantization: `awq_marlin`
 - `dtype="float16"`
 - `gpu_memory_utilization=0.55`
-- `max_model_len=4096`
-- `max_tokens=1024`
+- `max_model_len=3072`
+- `max_tokens=768`
 - `enable_prefix_caching=True`
 - `enforce_eager=True` for stability
 - optional `cpu_offload_gb` from settings
@@ -48,11 +48,10 @@ a full synchronous call in an executor.
 
 ## Important Caveats
 
-### 1. 4GB vs 6GB VRAM
+### 1. 4GB VRAM Target
 
-Some settings are conservative enough to experiment with 4GB GPUs, but current
-runtime validation warns below 6GB VRAM. The active default context is 4096
-tokens, not 2048.
+The app is now configured around the lighter 1.5B AWQ model and warns below 4GB
+VRAM. The active default context is 3072 tokens.
 
 ### 2. Simulated Streaming
 

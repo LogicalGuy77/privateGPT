@@ -189,7 +189,7 @@ uv run python build.py
 The build script expects a local bundled model at:
 
 ```text
-models/Qwen2.5-3B-Instruct-AWQ/
+models/Qwen2.5-1.5B-Instruct-AWQ/
 ```
 
 Nuitka is not the current build path in this repo.

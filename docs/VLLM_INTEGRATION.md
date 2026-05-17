@@ -7,7 +7,7 @@ This document describes the current vLLM integration in Private-GPT.
 The app uses vLLM to run:
 
 ```text
-Qwen/Qwen2.5-3B-Instruct-AWQ
+Qwen/Qwen2.5-1.5B-Instruct-AWQ
 ```
 
 The old Nemotron/Nano experiment is no longer the active runtime path. There is
@@ -29,13 +29,13 @@ Current defaults:
 
 ```python
 VLLMService(
-    model_name="Qwen/Qwen2.5-3B-Instruct-AWQ",
+    model_name="Qwen/Qwen2.5-1.5B-Instruct-AWQ",
     dtype="float16",
     quantization="awq_marlin",
     gpu_memory_utilization=0.55,
-    max_model_len=4096,
+    max_model_len=3072,
     max_num_seqs=4,
-    cpu_offload_gb=2.0,  # passed from MainWindow settings
+    cpu_offload_gb=1.0,  # passed from MainWindow settings
 )
 ```
 
@@ -63,10 +63,10 @@ possible.
 
 `setup_manager.get_model_path()` resolves the model in this order:
 
-1. Bundled model under `models/Qwen2.5-3B-Instruct-AWQ/`.
+1. Bundled model under `models/Qwen2.5-1.5B-Instruct-AWQ/`.
 2. Saved config under `~/.private-gpt/model_config.txt`.
 3. Common local model locations.
-4. HuggingFace model ID `Qwen/Qwen2.5-3B-Instruct-AWQ`.
+4. HuggingFace model ID `Qwen/Qwen2.5-1.5B-Instruct-AWQ`.
 
 In packaged mode, `get_bundled_model_path()` also checks PyInstaller/Nuitka-style
 bundle locations, but the current build script uses PyInstaller.
@@ -79,7 +79,7 @@ bundle locations, but the current build script uses PyInstaller.
 GenerationConfig(
     temperature=0.7,
     top_p=0.95,
-    max_tokens=1024,
+    max_tokens=768,
     system_prompt=...
 )
 ```
@@ -124,15 +124,15 @@ Docker is not required for normal local usage.
 
 ## Hardware Notes
 
-The code currently warns below 6GB VRAM:
+The code currently warns below 4GB VRAM:
 
 ```python
-validate_hardware_requirements(gpu_info, min_vram_gb=6.0)
+validate_hardware_requirements(gpu_info, min_vram_gb=4.0)
 ```
 
-The memory settings are conservative, but the active default context is 4096
-tokens. For lower VRAM GPUs, reduce `max_model_len`, `max_tokens`, and/or
-`gpu_memory_utilization`.
+The memory settings are conservative for the 1.5B AWQ model, and the active
+default context is 3072 tokens. For lower VRAM GPUs, reduce `max_model_len`,
+`max_tokens`, and/or `gpu_memory_utilization`.
 
 ## Troubleshooting
 

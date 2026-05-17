@@ -99,13 +99,13 @@ class SettingsDialog(QDialog):
             "4096 tokens (8GB VRAM)",
             "6144 tokens (10GB+ VRAM)"
         ])
-        self.context_combo.setCurrentIndex(1)  # 2048 default
+        self.context_combo.setCurrentIndex(2)  # 3072 default for Qwen2.5-1.5B
         self.context_combo.currentIndexChanged.connect(self.update_context_info)
         
         ctx_layout.addWidget(QLabel("Context Window"))
         ctx_layout.addWidget(self.context_combo)
         
-        self.context_info = QLabel("~1500 words of conversation memory")
+        self.context_info = QLabel("~2300 words of conversation memory")
         self.context_info.setStyleSheet("color: #888; font-size: 11px;")
         ctx_layout.addWidget(self.context_info)
         
@@ -116,12 +116,12 @@ class SettingsDialog(QDialog):
         self.offload_slider = QSlider(Qt.Orientation.Horizontal)
         self.offload_slider.setMinimum(0)
         self.offload_slider.setMaximum(40)
-        self.offload_slider.setValue(20)
+        self.offload_slider.setValue(10)
         self.offload_slider.setTickInterval(10)
         self.offload_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.offload_slider.valueChanged.connect(self.update_offload_label)
         
-        self.offload_label = QLabel("2.0 GB")
+        self.offload_label = QLabel("1.0 GB")
         self.offload_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         
         offload_header = QHBoxLayout()
@@ -202,12 +202,12 @@ class SettingsDialog(QDialog):
         self.tokens_slider = QSlider(Qt.Orientation.Horizontal)
         self.tokens_slider.setMinimum(256)
         self.tokens_slider.setMaximum(4096)
-        self.tokens_slider.setValue(2048)
+        self.tokens_slider.setValue(768)
         self.tokens_slider.setTickInterval(512)
         self.tokens_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.tokens_slider.valueChanged.connect(self.update_tokens_label)
         
-        self.tokens_label = QLabel("2048")
+        self.tokens_label = QLabel("768")
         self.tokens_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         
         tokens_header = QHBoxLayout()
@@ -396,11 +396,11 @@ class SettingsDialog(QDialog):
     def reset_to_defaults(self):
         """Reset all settings to defaults."""
         self.memory_slider.setValue(55)
-        self.context_combo.setCurrentIndex(1)  # 2048
-        self.offload_slider.setValue(20)  # 2.0 GB
+        self.context_combo.setCurrentIndex(2)  # 3072
+        self.offload_slider.setValue(10)  # 1.0 GB
         self.temp_slider.setValue(70)  # 0.70
         self.topp_slider.setValue(95)  # 0.95
-        self.tokens_slider.setValue(2048)
+        self.tokens_slider.setValue(768)
         self.rag_strategy_combo.setCurrentIndex(0)  # Always
         self.threshold_slider.setValue(50)  # 0.5
     

@@ -7,7 +7,7 @@ from transformers import AutoTokenizer
 class TokenBasedChunker:
     """Token-aware text chunker for better LLM context alignment."""
     
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-3B-Instruct-AWQ"):
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-1.5B-Instruct-AWQ"):
         """
         Initialize tokenizer.
         

@@ -27,21 +27,21 @@ def get_bundled_model_path() -> Path | None:
             
             # Try both locations
             for bp in [base_path, meipass_path]:
-                model_path = bp / "models" / "Qwen2.5-3B-Instruct-AWQ"
+                model_path = bp / "models" / "Qwen2.5-1.5B-Instruct-AWQ"
                 if model_path.exists() and (model_path / "config.json").exists():
                     print(f"✅ Found bundled model at: {model_path}")
                     return model_path
         else:
             # Nuitka standalone
             base_path = Path(sys.executable).parent
-            model_path = base_path / "models" / "Qwen2.5-3B-Instruct-AWQ"
+            model_path = base_path / "models" / "Qwen2.5-1.5B-Instruct-AWQ"
             if model_path.exists() and (model_path / "config.json").exists():
                 print(f"✅ Found bundled model at: {model_path}")
                 return model_path
     else:
         # Development mode
         base_path = Path(__file__).parent.parent.parent.parent
-        model_path = base_path / "models" / "Qwen2.5-3B-Instruct-AWQ"
+        model_path = base_path / "models" / "Qwen2.5-1.5B-Instruct-AWQ"
         if model_path.exists() and (model_path / "config.json").exists():
             return model_path
     
@@ -89,9 +89,9 @@ def get_model_path() -> str:
     
     # Third, check common locations
     common_paths = [
-        Path("models/Qwen2.5-3B-Instruct-AWQ"),
-        Path.home() / ".cache" / "huggingface" / "hub" / "models--Qwen--Qwen2.5-3B-Instruct-AWQ",
-        Path.home() / ".private-gpt" / "models" / "Qwen2.5-3B-Instruct-AWQ",
+        Path("models/Qwen2.5-1.5B-Instruct-AWQ"),
+        Path.home() / ".cache" / "huggingface" / "hub" / "models--Qwen--Qwen2.5-1.5B-Instruct-AWQ",
+        Path.home() / ".private-gpt" / "models" / "Qwen2.5-1.5B-Instruct-AWQ",
     ]
     
     for path in common_paths:
@@ -101,7 +101,7 @@ def get_model_path() -> str:
     
     # Fallback to HuggingFace (will download on first use)
     print("⚠️  No local model found, will use HuggingFace (requires internet)")
-    return "Qwen/Qwen2.5-3B-Instruct-AWQ"
+    return "Qwen/Qwen2.5-1.5B-Instruct-AWQ"
 
 
 class FirstTimeSetupDialog:
@@ -130,5 +130,5 @@ class FirstTimeSetupDialog:
                 "Model Not Found",
                 "<h3>Model not found</h3>"
                 "<p>The application will attempt to download the model from HuggingFace.</p>"
-                "<p>This requires an internet connection (~2GB download).</p>"
+                "<p>This requires an internet connection (~1.5GB download).</p>"
             )

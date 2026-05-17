@@ -48,7 +48,7 @@ uv run python -c "import torch; print(torch.cuda.is_available()); print(torch.cu
 Expected behavior:
 
 - GPU check runs.
-- Qwen2.5-3B-Instruct-AWQ loads through vLLM.
+- Qwen2.5-1.5B-Instruct-AWQ loads through vLLM.
 - Status changes to model ready.
 - `nvidia-smi` shows Python/vLLM using VRAM.
 
